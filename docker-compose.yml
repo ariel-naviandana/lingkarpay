@@ -1,0 +1,18 @@
+# Postgres lokal untuk pengembangan (data dummy).
+# Jalankan: docker compose up -d
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: lingkarpay-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lingkarpay
+      POSTGRES_PASSWORD: lingkarpay_dev
+      POSTGRES_DB: lingkarpay
+    ports:
+      - "5433:5432"
+    volumes:
+      - lingkarpay-db:/var/lib/postgresql/data
+
+volumes:
+  lingkarpay-db:

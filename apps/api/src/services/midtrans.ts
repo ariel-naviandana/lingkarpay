@@ -61,7 +61,7 @@ export async function createSnapTransaction(
     expiry: { unit: "minutes", duration: p.expiryMinutes },
   };
   if (p.items) body.item_details = p.items;
-  if (p.enabledPayments) body.enable_payments = p.enabledPayments;
+  if (p.enabledPayments) body.enabled_payments = p.enabledPayments;
 
   const res = await gatewayFetch(SNAP_URL, {
     method: "POST",

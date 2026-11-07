@@ -9,6 +9,8 @@ const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(3001),
 
+  DATABASE_URL: z.string().min(1, "wajib diisi"),
+
   MIDTRANS_SERVER_KEY: z.string().min(1, "wajib diisi"),
   MIDTRANS_CLIENT_KEY: z.string().min(1, "wajib diisi"),
 
