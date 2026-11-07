@@ -3,6 +3,7 @@ import { z } from "zod";
 import { config } from "../config.js";
 import { requireUser } from "../lib/auth.js";
 import { createCheckout } from "../services/checkout.js";
+import { syncOrderFromGateway } from "../services/gatewayStatus.js";
 import { getOrderForUser } from "../services/orders.js";
 
 const checkoutBody = z.object({
@@ -25,9 +26,20 @@ export async function checkoutRoutes(app: FastifyInstance) {
     return reply.code(result.reused ? 200 : 201).send(result);
   });
 
+  // ?sync=true: tanya Status API Midtrans lebih dulu (pemulihan bila webhook terlambat/hilang).
   app.get("/orders/:orderId", async (req) => {
     const user = await requireUser(req);
     const { orderId } = z.object({ orderId: z.string().min(1).max(60) }).parse(req.params);
-    return getOrderForUser(user, orderId);
+    const { sync } = z
+      .object({ sync: z.enum(["true", "false"]).optional() })
+      .parse(req.query);
+
+    let order = await getOrderForUser(user, orderId); // sekaligus cek kepemilikan
+    if (sync === "true" && order.status === "PENDING") {
+      const gatewaySync = await syncOrderFromGateway(orderId);
+      order = await getOrderForUser(user, orderId);
+      return { ...order, gatewaySync };
+    }
+    return order;
   });
 }

@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { ZodError } from "zod";
 import { config } from "./config.js";
+import { pool } from "./db/pool.js";
 import { AppError } from "./lib/errors.js";
 import { healthRoutes } from "./routes/health.js";
 import { statusRoutes } from "./routes/status.js";
@@ -17,6 +18,10 @@ export async function buildApp(): Promise<FastifyInstance> {
       // Jangan pernah mencatat header otorisasi.
       redact: ["req.headers.authorization"],
     },
+  });
+
+  app.addHook("onClose", async () => {
+    await pool.end();
   });
 
   app.setErrorHandler((error, req, reply) => {
