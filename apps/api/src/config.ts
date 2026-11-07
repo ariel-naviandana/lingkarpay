@@ -18,6 +18,12 @@ const schema = z.object({
   DEFAULT_ADMIN_FEE: z.coerce.number().int().min(0).default(1000),
 
   DEV_TOOLS: bool.default("true"),
+
+  // Midtrans Iris (payout sandbox). Dimatikan secara bawaan; pencairan memakai simulasi.
+  IRIS_ENABLED: bool.default("false"),
+  IRIS_CREATOR_KEY: z.string().optional(),
+  IRIS_APPROVER_KEY: z.string().optional(),
+  IRIS_OTP: z.string().default("335163"),
 });
 
 export type Config = z.infer<typeof schema>;

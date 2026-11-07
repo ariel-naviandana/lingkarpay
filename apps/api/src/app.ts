@@ -10,6 +10,7 @@ import { devRoutes } from "./routes/dev.js";
 import { authRoutes } from "./routes/auth.js";
 import { circleRoutes } from "./routes/circles.js";
 import { checkoutRoutes } from "./routes/checkout.js";
+import { payoutRoutes } from "./routes/payouts.js";
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -59,6 +60,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(authRoutes);
   await app.register(circleRoutes);
   await app.register(checkoutRoutes);
+  await app.register(payoutRoutes);
   await app.register(statusRoutes);
   await app.register(webhookRoutes);
   if (config.DEV_TOOLS && config.NODE_ENV !== "production") {
