@@ -1,14 +1,15 @@
 # Rancangan Jalur Payment Gateway — Antarmuka v1
 
-Dokumen ini adalah kontrak untuk jalur lain (frontend memakai API ini, smart contract menerima tugas dari outbox). Perubahan setelah disepakati harus dicatat di bagian Riwayat.
+Dokumen ini adalah kontrak untuk jalur lain: frontend memakai API ini, jalur smart contract memakai outbox (§7). Detail endpoint ada di `API.md`, skema tabel di `ERD.md`. Perubahan setelah disepakati dicatat di Riwayat.
 
 ## 1. Alur
 ```
 Frontend → POST /checkout → [order PENDING + token Snap] → anggota bayar di simulator
-Midtrans → POST /midtrans-webhook → verifikasi signature → cek duplikat → cek jumlah
-        → order SETTLED → tulis chain_jobs (outbox)
-Modul chain (jalur kontrak) → ambil job → recordPayment ke Sepolia → order ANCHORED
-Rekonsiliasi: cocokkan orders ↔ status gateway ↔ chain_transactions
+Midtrans → POST /midtrans-webhook → verifikasi signature → dedupe → cek jumlah
+        → mesin status: order SETTLED → tulis chain_jobs (outbox) → periode siap cair bila semua lunas
+Modul chain → claimJobs → recordPayment ke Sepolia → markJobConfirmed → order ANCHORED
+Operator → POST /payouts/simulate → payout dicatat → job markPayout → periode berikutnya dibuka
+Rekonsiliasi: GET /reports/reconciliation (orders ↔ gateway ↔ chain)
 ```
 
 ## 2. Status pesanan
@@ -18,74 +19,81 @@ Rekonsiliasi: cocokkan orders ↔ status gateway ↔ chain_transactions
 | SETTLED | Webhook valid: pembayaran sukses |
 | SETTLED_PENDING_CHAIN | Sudah dibayar, pencatatan on-chain gagal dan sedang diulang |
 | ANCHORED | Tercatat di Sepolia (tx terkonfirmasi) |
-| FAILED | Ditolak/dibatalkan gateway |
+| FAILED | Ditolak/dibatalkan gateway, atau gagal membuat token |
 | EXPIRED | Lewat batas waktu bayar |
 
-Transisi yang diizinkan:
-- PENDING → SETTLED | FAILED | EXPIRED
-- SETTLED → ANCHORED | SETTLED_PENDING_CHAIN
-- SETTLED_PENDING_CHAIN → ANCHORED
-- FAILED, EXPIRED, ANCHORED: final.
+Transisi sah: PENDING → SETTLED \| FAILED \| EXPIRED; SETTLED → ANCHORED \| SETTLED_PENDING_CHAIN; SETTLED_PENDING_CHAIN → ANCHORED. FAILED, EXPIRED, ANCHORED final. Semua perubahan lewat `services/orderStatus.ts` dan tercatat di `order_status_history`. Transisi tidak sah (mis. notifikasi lama setelah status final) diabaikan, bukan menimbulkan error.
 
-Pemetaan `transaction_status` Midtrans: `settlement` (dan `capture` dengan `fraud_status=accept`) → SETTLED; `pending` → tetap PENDING; `deny`/`cancel`/`failure` → FAILED; `expire` → EXPIRED.
+Pemetaan `transaction_status` Midtrans: `settlement` (dan `capture` selain `fraud_status=challenge`) → SETTLED; `pending` → PENDING; `deny`/`cancel`/`failure` → FAILED; `expire` → EXPIRED; lainnya (refund, authorize, dst.) diabaikan.
 
-## 3. Skema database (PostgreSQL)
-Mengikuti ERD proposal (Gambar 4), ditambah `chain_jobs` sebagai outbox.
+Status periode: `scheduled` → `running` → `ready_payout` → `done`. Periode menjadi `ready_payout` bila semua anggota punya iuran lunas (cermin sisi backend; keputusan resmi di contract `closePeriod`).
 
-- `users(id, name, contact, created_at)` — data dummy.
-- `circles(id, name, contribution_amount, period_days, penalty_pct, admin_fee, status, chain_circle_id, created_by, created_at)`
-- `members(id, circle_id, user_id, member_ref, turn_order)` — `member_ref` = ID samaran yang dipakai on-chain.
-- `periods(id, circle_id, period_no, due_date, status, recipient_member_id)`
-- `orders(id, order_id UNIQUE, member_id, period_id, amount, penalty_amount, admin_fee, status, idempotency_key UNIQUE, gateway_ref, snap_token, created_at, updated_at)`
-  - `amount` = iuran, `gross` = amount + penalty_amount + admin_fee (BIGINT rupiah).
-  - Unik per kombinasi (member_id, period_id) untuk order yang masih PENDING/SETTLED/ANCHORED.
-- `webhook_events(id, order_id, payload_hash UNIQUE, signature_valid, processed, received_at)`
-- `chain_jobs(id, order_id UNIQUE, payload JSON, status [queued|sent|confirmed|failed], attempts, last_error, created_at)` — antarmuka ke modul chain.
-- `chain_transactions(id, order_id, tx_hash, ref_hash, status, attempts, confirmed_at)`
-- `payouts(id, period_id, recipient_member_id, amount, status [simulasi], payout_ref_hash)`
-
-Migrasi berupa file SQL berurutan di `apps/api/db/migrations/`.
+## 3. Skema database
+Lihat `ERD.md` dan `apps/api/db/migrations/001_init.sql`. Ringkas:
+`users`, `sessions`, `circles`, `members` (punya `member_ref` samaran), `periods`, `orders`, `order_status_history`, `webhook_events`, `payouts`, `chain_jobs` (outbox), `chain_transactions`.
+Uang: BIGINT rupiah. Satu iuran aktif per anggota per periode dijaga indeks unik parsial pada `orders`.
 
 ## 4. Endpoint v1
-| Metode | Path | Fungsi |
+Ringkasan (rincian di `API.md`):
+
+| Metode | Path | Auth |
 |---|---|---|
-| POST | `/auth/register`, `/auth/login` | Akun sederhana (sandbox) |
-| POST | `/circles` | Buat kelompok |
-| GET | `/circles`, `/circles/:id` | Daftar & detail (status periode, siapa sudah bayar, giliran, penalti) |
-| POST | `/circles/:id/members` | Tambah/undang anggota |
-| GET | `/circles/:id/periods` | Daftar periode |
-| POST | `/checkout` | Buat order PENDING + token Snap. Body: `circleId, periodId, memberId`. Idempoten. |
-| POST | `/midtrans-webhook` | Penerima notifikasi Midtrans |
-| GET | `/orders/:orderId` | Status order di database |
-| GET | `/status/:orderId` | Cek ke Status API Midtrans + verifikasi signature (bukti rumus benar) |
-| GET | `/circles/:id/payments` | Riwayat pembayaran dan pencairan |
-| POST | `/payouts/simulate` | Simulasi pencairan periode yang siap cair |
-| GET | `/reports/reconciliation` | Laporan pencocokan |
+| POST | `/auth/register`, `/auth/login`; GET `/auth/me` | — / ya |
+| POST | `/circles`; GET `/circles`, `/circles/:id` | ya |
+| POST | `/circles/:id/members`, `/circles/:id/start` | ya (pembuat) |
+| GET | `/circles/:id/periods`, `/circles/:id/payments` | ya |
+| POST | `/checkout` | ya |
+| GET | `/orders/:orderId` (opsional `?sync=true`) | ya |
+| POST | `/midtrans-webhook` | signature Midtrans |
+| GET | `/status/:orderId` | — (sandbox; baca Status API + cek signature) |
+| POST | `/payouts/simulate`, `/payouts/iris` | ya (pembuat) |
+| GET | `/reports/reconciliation` | ya (pembuat) |
+| GET | `/public-config`, `/health` | — |
 
 Format error seragam: `{ "error": { "code": "...", "message": "..." } }`.
 
 ## 5. Tagihan
-`gross_amount = iuran + penalti terutang + biaya admin`. Penalti pada akhirnya dihitung kontrak; selama kontrak belum siap, backend memakai aturan yang sama (persen × iuran bila lewat tenggat) lewat satu fungsi `computePenalty` yang nanti diganti pembacaan dari contract. Biaya admin dari konfigurasi lingkar.
+`gross_amount = iuran + penalti terutang + biaya admin`.
+- Penalti: bila lewat tenggat, `ceil(iuran × penalty_pct / 100)` (aritmetika bilangan bulat), seragam untuk semua anggota. Satu fungsi `computePenalty`; nanti dapat diganti pembacaan dari contract.
+- Biaya admin: `circles.admin_fee` (bawaan `DEFAULT_ADMIN_FEE`). Ini pendapatan LingkarPay dan tidak ikut dicairkan.
+- Penalti dan biaya admin di-**snapshot saat order dibuat**. Order PENDING yang dipakai ulang memakai angka lama sampai kedaluwarsa (batasan yang diketahui: penalti tidak dihitung ulang bila tenggat terlewati saat order masih berlaku).
 
 ## 6. Idempotensi
-- Checkout: `idempotency_key` = `circleId:periodId:memberId`. Panggilan ulang mengembalikan order yang sama (atau token yang sama selama masih PENDING).
-- Webhook: `payload_hash` unik; duplikat dibalas 200 tanpa efek.
-- Outbox: `chain_jobs.order_id` unik, satu pembayaran satu job.
+- Checkout: panggilan ulang mengembalikan order PENDING yang sama (token sama). Iuran lunas → 409 `ALREADY_PAID`. Dua checkout serentak ditangani indeks unik parsial.
+- Webhook: `payload_hash` unik; notifikasi berulang dibalas 200 tanpa efek.
+- Outbox: satu order SETTLED = satu job `recordPayment`; satu payout = satu job `markPayout`.
 
-## 7. Antarmuka ke jalur kontrak (outbox)
-Satu baris `chain_jobs` per order SETTLED dengan payload minimal (tanpa data pribadi):
+## 7. Antarmuka ke jalur smart contract (outbox)
+Modul chain TypeScript memakai fungsi di `src/services/outbox.ts` (satu proses/repo, tanpa HTTP):
+
+| Fungsi | Kapan |
+|---|---|
+| `claimJobs(limit)` | Ambil job `queued` yang siap (aman paralel; job `sent` macet > 5 menit diambil ulang). Menaikkan `attempts`. |
+| `markJobConfirmed(jobId, txHash)` | Tx terkonfirmasi. Order `recordPayment` → ANCHORED. Idempoten. |
+| `markJobFailed(jobId, error)` | Gagal kirim. Diulang dengan backoff sampai 5 kali; order → SETTLED_PENDING_CHAIN. |
+| `requeueJob(jobId)` | Operator mengantrekan ulang job yang sudah `failed`. |
+
+Payload job (tanpa data pribadi):
 ```json
-{ "circleChainId": "...", "periodNo": 1, "memberRef": "m_ab12", "refHash": "0x...", "paidAt": 1700000000 }
+// recordPayment
+{ "circleId": 1, "circleChainId": null, "periodNo": 1, "memberRef": "m_ab12cd34",
+  "refHash": "0x…", "paidAt": 1700000000 }
+// markPayout
+{ "circleId": 1, "circleChainId": null, "periodNo": 1, "recipientMemberRef": "m_ab12cd34",
+  "payoutRefHash": "0x…", "recipientAccountHash": null, "amount": 300000 }
 ```
-Modul chain mengubah status job dan mengisi `chain_transactions`; backend memperbarui order ke ANCHORED/SETTLED_PENDING_CHAIN. `refHash` = Keccak-256 dari ringkasan transaksi gateway (tanpa data pribadi).
+`refHash` = Keccak-256 dari `lingkarpay:v1:{order_id}:{gateway_ref}:{gross_amount}` (bukan data pribadi). `circleChainId` diisi jalur kontrak ke `circles.chain_circle_id` setelah `createCircle`/`startCircle` di chain; sampai saat itu bernilai null.
 
 ## 8. Pencairan (payout)
-Sandbox: dimulai dengan simulasi (status disimpan di `payouts`, lalu panggil `markPayout` lewat modul chain). Spike Midtrans Iris (pembuat/penyetuju payout) dilakukan setelah webhook stabil; bila sandbox Iris tidak bisa dipakai, tetap simulasi dan batasannya dinyatakan di dokumentasi.
+- Simulasi (bawaan): hanya operator (pembuat kelompok), hanya saat periode `ready_payout`. Dana = iuran + penalti terkumpul (tanpa biaya admin). Mencatat `payouts`, mengantrekan `markPayout`, menandai periode `done`, membuka periode berikutnya (atau menutup kelompok).
+- Iris sandbox (opsional, `IRIS_ENABLED=true` + kunci creator & approver): membuat payout lalu approve. Data penerima dummy; nomor rekening tidak disimpan, hanya hash Keccak-256-nya. Bentuk request mengikuti dokumentasi Iris dan **belum diuji** di sandbox kelompok. Notifikasi status payout dari Iris belum ditangani; status berhenti di `APPROVED`.
 
 ## 9. Keputusan yang diambil (bisa diubah)
-- DB: PostgreSQL via Docker Compose, akses dengan `pg` dan SQL migrasi biasa (tanpa ORM) agar mudah dijelaskan saat presentasi.
-- Validasi: zod. Tes: `node:test` bawaan Node + `tsx`.
-- Auth: sesi sederhana (token) untuk sandbox; bukan fokus penilaian.
+- DB: PostgreSQL via Docker Compose (port 5433), akses `pg` + SQL migrasi biasa (tanpa ORM).
+- Validasi: zod. Auth: token sesi sederhana (scrypt + token acak berhash), cukup untuk sandbox.
+- Kanal bayar: VA bank dan e-wallet saja; QRIS dimatikan.
+- `/status/:orderId` sengaja tanpa auth untuk memudahkan uji spike di sandbox.
 
 ## Riwayat
 - 2026-11-08: draf awal.
+- 2026-11-08: disesuaikan dengan implementasi: tabel `users` memakai `email`/`password_hash` plus `sessions`; `circles.member_count`; `chain_jobs.kind` (recordPayment/markPayout) dan `chain_transactions.job_id`; `orders.expires_at`; indeks unik parsial; `idempotency_key` berformat `circle:period:member#percobaan`; endpoint tambahan (`/circles/:id/start`, `/payouts/iris`, `/public-config`, `/orders/:orderId`); antarmuka outbox berupa fungsi.

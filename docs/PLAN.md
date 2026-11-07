@@ -40,3 +40,26 @@ Aturan commit: tiap langkah = commit + push (lihat `RULES.md`). Kolom "Selesai b
 - Perbarui Notification URL setiap tunnel Cloudflared restart.
 - Nyalakan Docker Desktop untuk Postgres (langkah 4).
 - Isi Server Key di `.env` sendiri. Kunci tidak boleh dikirim ke chat.
+
+## Status (2026-11-08)
+Kode langkah 0-12 dan dokumentasi (14) sudah ditulis dan di-commit. Tes otomatis (langkah 13) sengaja ditunda atas permintaan, jadi belum ada tes.
+
+| Langkah | Status |
+|---|---|
+| 0, 1 | Selesai |
+| 2 Spike webhook | Kode selesai (ipv4first, signature timing-safe, `/status/:orderId`). Menunggu uji dengan tunnel |
+| 3 Struktur | Selesai |
+| 4 Database | Selesai (belum dijalankan) |
+| 5 Mesin status | Selesai |
+| 6 API circles | Selesai (belum dijalankan) |
+| 7 Tagihan | Selesai |
+| 8 Checkout | Selesai (belum diuji ke Midtrans) |
+| 9 Webhook | Selesai (belum diuji ke Midtrans) |
+| 10 Outbox | Selesai. Dipakai modul chain dari jalur kontrak |
+| 11 Payout | Simulasi selesai. Iris ditulis dari dokumentasi, belum diuji |
+| 12 Rekonsiliasi | Selesai (belum dijalankan) |
+| 13 Tes | Ditunda |
+| 14 Dokumentasi | Selesai: `API.md`, `ERD.md`, `DESIGN.md`, `apps/api/README.md` |
+
+## Yang masih perlu dibuktikan (belum pernah dijalankan)
+Kode ditulis tanpa bisa dikompilasi atau dijalankan di lingkungan pengembangan. Urutan verifikasi: `npm install` → `npm run typecheck` → `docker compose up -d` → `npm run migrate` → uji spike webhook → uji alur penuh (daftar, buat kelompok, mulai, checkout, bayar di simulator, cek `GET /orders/:orderId`).
