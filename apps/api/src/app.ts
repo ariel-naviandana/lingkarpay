@@ -6,6 +6,8 @@ import { healthRoutes } from "./routes/health.js";
 import { statusRoutes } from "./routes/status.js";
 import { webhookRoutes } from "./routes/webhook.js";
 import { devRoutes } from "./routes/dev.js";
+import { authRoutes } from "./routes/auth.js";
+import { circleRoutes } from "./routes/circles.js";
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -48,6 +50,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   await app.register(healthRoutes);
+  await app.register(authRoutes);
+  await app.register(circleRoutes);
   await app.register(statusRoutes);
   await app.register(webhookRoutes);
   if (config.DEV_TOOLS && config.NODE_ENV !== "production") {
