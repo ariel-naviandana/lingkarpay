@@ -1,4 +1,5 @@
 import pg from "pg";
+import type { Pool as PgPool, PoolClient } from "pg";
 import { config } from "../config.js";
 
 // BIGINT (rupiah) dikembalikan sebagai number. Aman karena jauh di bawah 2^53.
@@ -10,9 +11,9 @@ export const pool = new pg.Pool({
 });
 
 /** Pool atau client transaksi. Fungsi data menerima keduanya. */
-export type Db = pg.Pool | pg.PoolClient;
+export type Db = PgPool | PoolClient;
 
-export async function withTx<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+export async function withTx<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");

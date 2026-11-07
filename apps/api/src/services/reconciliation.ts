@@ -62,7 +62,7 @@ export async function reconcileCircle(user: AuthUser, circleId: number, live: bo
     )
   ).rows;
 
-  const orders = [];
+  const orders: Array<Record<string, unknown> & { flags: string[] }> = [];
   let liveChecked = 0;
   for (const o of lines) {
     const flags: string[] = [];
