@@ -1,11 +1,19 @@
 import "dotenv/config";
+import dns from "node:dns";
 import Fastify from "fastify";
-import { createHash } from "node:crypto";
+import { verifySignature } from "./lib/signature.js";
+
+// Node di Windows sering memilih IPv6 dulu lalu timeout.
+dns.setDefaultResultOrder("ipv4first");
 
 const app = Fastify({ logger: true });
 const SERVER_KEY = process.env.MIDTRANS_SERVER_KEY!;
 const CLIENT_KEY = process.env.MIDTRANS_CLIENT_KEY!;
 const SNAP_URL = "https://app.sandbox.midtrans.com/snap/v1/transactions";
+const STATUS_URL = "https://api.sandbox.midtrans.com/v2";
+
+const basicAuth = () =>
+  "Basic " + Buffer.from(SERVER_KEY + ":").toString("base64");
 
 // Halaman tes sederhana
 app.get("/", async (_req, reply) => {
@@ -36,34 +44,28 @@ app.post("/checkout", async (req, reply) => {
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
-      Authorization:
-        "Basic " + Buffer.from(SERVER_KEY + ":").toString("base64"),
+      Authorization: basicAuth(),
     },
     body: JSON.stringify({
-      transaction_details: { order_id: orderId, gross_amount: amount },
+      transaction_details: {
+        order_id: orderId,
+        gross_amount: Math.trunc(amount),
+      },
       customer_details: { email },
     }),
   });
-  const data = await res.json();
+  const data = (await res.json()) as any;
   if (!res.ok) {
     req.log.error({ status: res.status, data }, "midtrans error");
     return reply.code(502).send(data);
   }
-  if (!res.ok) return reply.code(502).send(data);
   return { token: data.token, redirect_url: data.redirect_url };
 });
 
 // Webhook (dipakai di Spike B)
 app.post("/midtrans-webhook", async (req, reply) => {
   const b = (req.body ?? {}) as any;
-  const expected = createHash("sha512")
-    .update(
-      String(b.order_id) +
-        String(b.status_code) +
-        String(b.gross_amount) +
-        SERVER_KEY,
-    )
-    .digest("hex");
+  const valid = verifySignature(b, SERVER_KEY);
   req.log.info(
     {
       order_id: b.order_id,
@@ -71,12 +73,11 @@ app.post("/midtrans-webhook", async (req, reply) => {
       gross_amount: b.gross_amount,
       gross_amount_type: typeof b.gross_amount,
       status: b.transaction_status,
-      got: String(b.signature_key).slice(0, 12),
-      expected: expected.slice(0, 12),
+      signature_valid: valid,
     },
     "webhook DITERIMA",
   );
-  if (expected !== b.signature_key) {
+  if (!valid) {
     req.log.warn({ order_id: b.order_id }, "signature TIDAK cocok");
     return reply.code(401).send({ ok: false });
   }
@@ -85,6 +86,28 @@ app.post("/midtrans-webhook", async (req, reply) => {
     "webhook valid",
   );
   return { ok: true };
+});
+
+// Cek status transaksi ke Status API Midtrans + bukti rumus signature benar
+app.get("/status/:orderId", async (req, reply) => {
+  const { orderId } = req.params as { orderId: string };
+  const res = await fetch(`${STATUS_URL}/${encodeURIComponent(orderId)}/status`, {
+    headers: { Accept: "application/json", Authorization: basicAuth() },
+  });
+  const d = (await res.json()) as any;
+  if (!res.ok) {
+    return reply.code(502).send({ gatewayHttpStatus: res.status, data: d });
+  }
+  return {
+    orderId: d.order_id ?? orderId,
+    statusCode: d.status_code,
+    transactionStatus: d.transaction_status,
+    fraudStatus: d.fraud_status,
+    paymentType: d.payment_type,
+    grossAmount: d.gross_amount,
+    // true = rumus SHA512(order_id+status_code+gross_amount+ServerKey) cocok
+    signatureValid: verifySignature(d, SERVER_KEY),
+  };
 });
 
 app.listen({ port: Number(process.env.PORT ?? 3001), host: "0.0.0.0" });
