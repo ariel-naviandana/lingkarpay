@@ -4,7 +4,7 @@ import { config } from "../config.js";
 import { requireUser } from "../lib/auth.js";
 import { createCheckout } from "../services/checkout.js";
 import { syncOrderFromGateway } from "../services/gatewayStatus.js";
-import { cancelOrder, getOrderForUser } from "../services/orders.js";
+import { cancelOrder, expireOrder, getOrderForUser } from "../services/orders.js";
 
 const checkoutBody = z.object({
   circleId: z.number().int().positive(),
@@ -48,5 +48,12 @@ export async function checkoutRoutes(app: FastifyInstance) {
     const user = await requireUser(req);
     const { orderId } = z.object({ orderId: z.string().min(1).max(60) }).parse(req.params);
     return cancelOrder(user, orderId);
+  });
+
+  // Kedaluwarsakan sekarang order PENDING (Expire API Midtrans). Hasil: EXPIRED.
+  app.post("/orders/:orderId/expire", async (req) => {
+    const user = await requireUser(req);
+    const { orderId } = z.object({ orderId: z.string().min(1).max(60) }).parse(req.params);
+    return expireOrder(user, orderId);
   });
 }

@@ -31,6 +31,7 @@ Kode error umum: `VALIDATION_ERROR` 400, `UNAUTHORIZED` 401, `FORBIDDEN` 403, `N
 | `POST /checkout` | Body `{ circleId, periodId, memberId }` (memberId harus milik user yang login). 201 order baru, 200 bila memakai ulang order PENDING. |
 | `GET /orders/:orderId` | Detail order + `history`. Hanya pemilik order atau pembuat kelompok. `?sync=true` (saat PENDING) menanyakan Status API Midtrans lebih dulu. |
 | `POST /orders/:orderId/cancel` | Batalkan order PENDING yang sudah punya transaksi di Midtrans (VA/e-wallet sudah dipilih). Order menjadi FAILED sehingga anggota bisa membayar lagi. 409 `NOT_CANCELLABLE` (bukan PENDING, atau Midtrans menolak), 409 `NO_GATEWAY_TRANSACTION` (metode bayar belum dipilih; tunggu kedaluwarsa). |
+| `POST /orders/:orderId/expire` | Kedaluwarsakan order PENDING sekarang lewat Expire API Midtrans (hasil EXPIRED). Aturan dan kode error seperti cancel, dengan `NOT_EXPIRABLE`. |
 
 Respons `POST /checkout`:
 ```json

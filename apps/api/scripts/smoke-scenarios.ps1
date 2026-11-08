@@ -9,6 +9,8 @@
     powershell -ExecutionPolicy Bypass -File .\scripts\smoke-scenarios.ps1 -Scenario Ewallet
 
   Expire : set ORDER_EXPIRY_MINUTES=5 di .env, restart server, lalu jalankan. Jangan membayar.
+           Atau tambahkan -ApiExpire: buat VA di halaman Snap lalu skrip mengedaluwarsakan lewat API
+           (POST /orders/:orderId/expire) tanpa menunggu.
   Cancel : buat VA di halaman Snap, lalu batalkan transaksi dari dashboard Midtrans (Transactions > Cancel).
            Bila dashboard error, tambahkan -ApiCancel: skrip membatalkan lewat API (POST /orders/:orderId/cancel).
   Ewallet: bayar dengan GoPay atau ShopeePay lewat simulator Midtrans (jangan pakai aplikasi sungguhan).
@@ -21,6 +23,7 @@ param(
   [string]$Scenario,
   [string]$Base = "http://localhost:3001",
   [switch]$ApiCancel,
+  [switch]$ApiExpire,
   [switch]$NoBrowser,
   [int]$TimeoutMinutes = 20
 )
@@ -88,11 +91,16 @@ Write-Host "  Batas bayar: sekitar $minutesLeft menit dari sekarang."
 # ---------------- Skenario ----------------
 if ($Scenario -eq "Expire") {
   Step "Skenario KEDALUWARSA: jangan bayar, tunggu order habis waktu"
-  if ($minutesLeft -gt 15) {
+  if (($minutesLeft -gt 15) -and (-not $ApiExpire)) {
     Write-Host "  PERINGATAN: batas bayar $minutesLeft menit. Set ORDER_EXPIRY_MINUTES=5 di .env, restart server, ulangi." -ForegroundColor Yellow
   }
   Write-Host "  (Opsional) buka halaman Snap dan buat VA, lalu biarkan tidak dibayar."
   Open-Snap $co
+  if ($ApiExpire) {
+    Read-Host "  Tekan Enter setelah nomor VA muncul di halaman Snap (jangan dibayar)" | Out-Null
+    $e = Api POST "/orders/$($co.orderId)/expire" $null $a.token
+    Check "kedaluwarsa lewat API" ($e.status -eq "EXPIRED") "status=$($e.status)"
+  }
   $o = Wait-Status $co.orderId $a.token @("EXPIRED", "SETTLED", "SETTLED_PENDING_CHAIN", "ANCHORED", "FAILED") 15
   if ($null -eq $o) {
     Check "order menjadi EXPIRED" $false "timeout $TimeoutMinutes menit"

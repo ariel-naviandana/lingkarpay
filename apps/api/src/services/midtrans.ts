@@ -116,18 +116,15 @@ export async function getTransactionStatus(orderId: string): Promise<GatewayStat
   };
 }
 
-export interface CancelResult {
-  /** status_code dari body Midtrans: "200" berhasil, "412" tidak bisa dibatalkan, "404" tidak ada transaksi. */
+export interface CloseResult {
+  /** status_code dari body Midtrans: "200" berhasil, "412" tidak bisa diubah, "404" tidak ada transaksi. */
   statusCode: string;
+  /** status_message dari Midtrans (alasan penolakan bila gagal). */
   message: string;
 }
 
-/**
- * Membatalkan transaksi yang belum dibayar di Midtrans (POST /v2/{order_id}/cancel).
- * Midtrans melaporkan hasilnya di body (status_code), bukan hanya di status HTTP.
- */
-export async function cancelTransaction(orderId: string): Promise<CancelResult> {
-  const res = await call(`${API_URL}/${encodeURIComponent(orderId)}/cancel`, "POST");
+async function closeTransaction(orderId: string, action: "cancel" | "expire"): Promise<CloseResult> {
+  const res = await call(`${API_URL}/${encodeURIComponent(orderId)}/${action}`, "POST");
   if (res.status === 401) {
     throw new AppError(
       "GATEWAY_AUTH_FAILED",
@@ -140,3 +137,9 @@ export async function cancelTransaction(orderId: string): Promise<CancelResult> 
     message: String(res.json.status_message ?? ""),
   };
 }
+
+/** Membatalkan transaksi yang belum dibayar di Midtrans (POST /v2/{order_id}/cancel). */
+export const cancelTransaction = (orderId: string) => closeTransaction(orderId, "cancel");
+
+/** Memaksa transaksi pending kedaluwarsa sekarang (POST /v2/{order_id}/expire). */
+export const expireTransaction = (orderId: string) => closeTransaction(orderId, "expire");

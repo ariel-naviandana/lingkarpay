@@ -2,7 +2,7 @@ import { pool, withTx } from "../db/pool.js";
 import { conflict, forbidden, notFound } from "../lib/errors.js";
 import type { AuthUser } from "./auth.js";
 import { syncOrderFromGateway } from "./gatewayStatus.js";
-import { cancelTransaction } from "./midtrans.js";
+import { cancelTransaction, expireTransaction } from "./midtrans.js";
 import { transitionOrder, type OrderStatus } from "./orderStatus.js";
 
 /** Detail order untuk pemilik order atau pembuat kelompok. */
@@ -91,19 +91,16 @@ export async function expireOverdueOrders(): Promise<number> {
   return n;
 }
 
-/**
- * Membatalkan order PENDING (pemilik order atau pembuat kelompok).
- * Membatalkan transaksi di Midtrans lalu menyinkronkan status (cancel -> FAILED), sehingga
- * anggota bisa membuat order baru. Order yang metode bayarnya belum dipilih tidak punya
- * transaksi di Midtrans dan tidak bisa dibatalkan; tunggu kedaluwarsa.
- */
-export async function cancelOrder(user: AuthUser, orderId: string) {
+async function closeOrder(user: AuthUser, orderId: string, action: "cancel" | "expire") {
   const order = await getOrderForUser(user, orderId); // sekaligus cek kepemilikan
+  const refused = action === "cancel" ? "NOT_CANCELLABLE" : "NOT_EXPIRABLE";
+  const verb = action === "cancel" ? "dibatalkan" : "dikedaluwarsakan";
   if (order.status !== "PENDING") {
-    throw conflict("NOT_CANCELLABLE", `Order berstatus ${order.status}; hanya PENDING yang bisa dibatalkan`);
+    throw conflict(refused, `Order berstatus ${order.status}; hanya PENDING yang bisa ${verb}`);
   }
 
-  const result = await cancelTransaction(orderId);
+  const result =
+    action === "cancel" ? await cancelTransaction(orderId) : await expireTransaction(orderId);
   if (result.statusCode === "404") {
     throw conflict(
       "NO_GATEWAY_TRANSACTION",
@@ -111,14 +108,25 @@ export async function cancelOrder(user: AuthUser, orderId: string) {
     );
   }
 
-  // Selaraskan dengan kenyataan di Midtrans (berhasil dibatalkan, atau ternyata sudah dibayar/kedaluwarsa).
+  // Selaraskan dengan kenyataan di Midtrans (berhasil, atau ternyata sudah dibayar/kedaluwarsa).
   const gatewaySync = await syncOrderFromGateway(orderId);
   const latest = await getOrderForUser(user, orderId);
   if (result.statusCode !== "200") {
+    const detail = result.message ? `: ${result.message}` : "";
     throw conflict(
-      "NOT_CANCELLABLE",
-      `Midtrans menolak pembatalan (${result.statusCode}). Status order sekarang ${latest.status}.`,
+      refused,
+      `Midtrans menolak (${result.statusCode}${detail}). Status order sekarang ${latest.status}.`,
     );
   }
   return { ...latest, gatewaySync };
 }
+
+/**
+ * Membatalkan order PENDING (pemilik order atau pembuat kelompok): transaksi dibatalkan di Midtrans
+ * lalu status disinkronkan (cancel -> FAILED), sehingga anggota bisa membuat order baru.
+ * Order yang metode bayarnya belum dipilih tidak punya transaksi di Midtrans: tunggu kedaluwarsa.
+ */
+export const cancelOrder = (user: AuthUser, orderId: string) => closeOrder(user, orderId, "cancel");
+
+/** Mengedaluwarsakan order PENDING sekarang lewat Expire API (hasil: EXPIRED). */
+export const expireOrder = (user: AuthUser, orderId: string) => closeOrder(user, orderId, "expire");

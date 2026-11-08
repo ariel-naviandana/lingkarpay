@@ -632,7 +632,7 @@ describe("pembatalan order", () => {
   ) {
     const gross = `${order.grossAmount}.00`;
     ctx.midtrans.gatewayHttp.request = async (url: string) => {
-      if (url.endsWith("/cancel")) {
+      if (url.endsWith("/cancel") || url.endsWith("/expire")) {
         return { status: 200, ok: true, json: { status_code: cancelCode, status_message: "tiruan" } };
       }
       if (url.endsWith("/status")) {
@@ -691,6 +691,39 @@ describe("pembatalan order", () => {
     );
     assert.equal(await orderStatus(co.orderId), "SETTLED");
     assert.equal(await jobs(), 1);
+  });
+
+  dbTest("penolakan Midtrans menyertakan status_message agar penyebabnya terlihat", async () => {
+    const s = await seedCircle(ctx.pool);
+    const co = await checkoutFor(s, 0);
+    mockGateway(co, "403", "pending");
+    await assert.rejects(
+      () => ctx.orders.cancelOrder(asUser(s.members[0]!), co.orderId),
+      (e) => code(e) === "NOT_CANCELLABLE" && (e as Error).message.includes("403") && (e as Error).message.includes("tiruan"),
+    );
+    assert.equal(await orderStatus(co.orderId), "PENDING");
+  });
+
+  dbTest("expire: order PENDING menjadi EXPIRED lewat Expire API; anggota bisa membayar lagi", async () => {
+    const s = await seedCircle(ctx.pool);
+    const co = await checkoutFor(s, 0);
+    mockGateway(co, "200", "expire", "407");
+    const res = await ctx.orders.expireOrder(asUser(s.members[0]!), co.orderId);
+    assert.equal(res.status, "EXPIRED");
+    ctx.midtrans.gatewayHttp.request = async () => ({ status: 201, ok: true, json: { token: "tok-baru" } });
+    const again = await checkoutFor(s, 0);
+    assert.notEqual(again.orderId, co.orderId);
+  });
+
+  dbTest("expire ditolak (412): kode NOT_EXPIRABLE, order tetap PENDING", async () => {
+    const s = await seedCircle(ctx.pool);
+    const co = await checkoutFor(s, 0);
+    mockGateway(co, "412", "pending");
+    await assert.rejects(
+      () => ctx.orders.expireOrder(asUser(s.members[0]!), co.orderId),
+      (e) => code(e) === "NOT_EXPIRABLE",
+    );
+    assert.equal(await orderStatus(co.orderId), "PENDING");
   });
 
   dbTest("hanya pemilik order atau pembuat kelompok; order lunas tidak bisa dibatalkan", async () => {

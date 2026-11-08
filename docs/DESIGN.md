@@ -45,6 +45,7 @@ Ringkasan (rincian di `API.md`):
 | POST | `/checkout` | ya |
 | GET | `/orders/:orderId` (opsional `?sync=true`) | ya |
 | POST | `/orders/:orderId/cancel` | ya (pemilik order / pembuat kelompok) |
+| POST | `/orders/:orderId/expire` | ya (pemilik order / pembuat kelompok) |
 | POST | `/midtrans-webhook` | signature Midtrans |
 | GET | `/status/:orderId` | — (sandbox; baca Status API + cek signature) |
 | POST | `/payouts/simulate`, `/payouts/iris` | ya (pembuat) |

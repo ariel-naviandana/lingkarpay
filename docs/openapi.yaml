@@ -305,6 +305,20 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { description: "NOT_CANCELLABLE atau NO_GATEWAY_TRANSACTION", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
+  /orders/{orderId}/expire:
+    post:
+      tags: [Pembayaran]
+      summary: Kedaluwarsakan order PENDING sekarang (Expire API Midtrans)
+      description: Hasil EXPIRED. Syarat sama dengan cancel; 409 NOT_EXPIRABLE atau NO_GATEWAY_TRANSACTION.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Dikedaluwarsakan, content: { application/json: { schema: { $ref: "#/components/schemas/Order" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { description: "NOT_EXPIRABLE atau NO_GATEWAY_TRANSACTION", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
   /midtrans-webhook:
     post:
       tags: [Gateway]
