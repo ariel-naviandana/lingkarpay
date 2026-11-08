@@ -48,7 +48,9 @@ async function call(url: string, method: "GET" | "POST", body?: unknown): Promis
       headers: {
         Accept: "application/json",
         Authorization: authHeader(),
-        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+        "User-Agent": "LingkarPay/1.0",
+        // POST selalu mengirim Content-Type JSON (contoh resmi Midtrans), juga bila tanpa isi (cancel/expire).
+        ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
       },
     });
   } catch (err) {
