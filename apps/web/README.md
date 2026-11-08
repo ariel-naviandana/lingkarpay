@@ -34,3 +34,31 @@ Kalau butuh CORS sungguhan, minta jalur payment gateway menambahkan `@fastify/co
 
 ## Sebelum bisa mencoba
 Buat data lewat `apps/api/scripts/smoke.ps1`, atau lewat API langsung. Bayar hanya lewat simulator Midtrans (VA).
+
+## Kerangka awal (sudah disiapkan)
+Vite + React + TypeScript. **Belum pernah dijalankan atau dikompilasi**; versi paket dapat disesuaikan. Mulai dengan:
+```powershell
+cd C:\coding\lingkarpay\apps\web
+npm install
+npm run typecheck
+npm run dev          # http://localhost:5173 (backend harus jalan di :3001)
+```
+Salin `.env.example` ke `.env` untuk portal verifikasi.
+
+| File | Isi | Status |
+|---|---|---|
+| `src/api.ts`, `src/types.ts` | Klien API (token Bearer, error seragam) dan tipe dari `docs/openapi.yaml` | Ada |
+| `src/auth.tsx`, `src/pages/Login.tsx` | Login/daftar, sesi di `localStorage` | Ada |
+| `src/pages/Dashboard.tsx` | Daftar kelompok, buat kelompok | Ada |
+| `src/pages/CircleDetail.tsx` | Anggota dan status iuran periode berjalan, undang anggota, mulai kelompok, tombol bayar | Ada (dasar) |
+| `src/components/PayButton.tsx` | Alur Snap: `/public-config` → `/checkout` → `snap.pay` → polling `/orders/:id` | Ada |
+| `src/pages/Verify.tsx` | Portal verifikasi publik: baca contract dengan `viem` | Dasar |
+
+### Yang menjadi pekerjaan jalur ini (TODO)
+Cari `TODO(frontend)` di kode:
+1. Tabel semua periode dan penerimanya; riwayat pembayaran dan status pencairan (`api.payments`).
+2. Halaman/tombol operator: pencairan (`api.simulatePayout`), laporan rekonsiliasi (`api.reconciliation`).
+3. Portal verifikasi lengkap: status iuran per anggota per periode, penerima, penalti, tautan transaksi ke Etherscan Sepolia.
+4. Tampilan yang layak: pesan error, loading, responsif, penanganan status `SETTLED_PENDING_CHAIN`, callback Snap (`onClose`).
+5. User stories dan kriteria penerimaan (tulis di `docs/`), uji ujung ke ujung, video demo.
+Catatan: portal verifikasi baru berguna setelah contract ter-deploy dan `circles.chain_circle_id` terisi oleh modul chain.

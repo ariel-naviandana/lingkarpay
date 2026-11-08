@@ -35,6 +35,9 @@ Ditambahkan `POST /orders/:orderId/cancel` dan `/expire` (memanggil Cancel/Expir
 
 Temuan teknis: Expire API menandai sukses dengan `status_code` 407 ("Success, transaction is expired"), sedangkan Cancel API memakai 200. Dugaan awal (pembatasan IP/jaringan, header) keliru. Pelajaran: key Midtrans baru memisahkan izin per produk dan per kemampuan; refund tidak diaktifkan (hak akses seminimal mungkin).
 
+## 2026-11-08 — Kerangka awal untuk jalur lain
+Jalur payment gateway menyiapkan kerangka kode agar jalur lain punya bayangan dan titik mulai: `contracts/` (contract inti + tes + deploy), `apps/api/src/chain/worker.example.ts` (worker viem), dan `apps/web/` (Vite + React: login, dashboard, detail kelompok, tombol bayar Snap, portal verifikasi). Sengaja berhenti di bagian dasar: fungsi rumit (penalti, penutupan periode, pencairan, kuorum), idempotensi worker, dan halaman lanjutan ditandai `TODO(smart-contract)` / `TODO(frontend)` sebagai pekerjaan jalur masing-masing. Semuanya belum dikompilasi atau dijalankan.
+
 ## Template entri
 ```
 ## YYYY-MM-DD — <jalur>
