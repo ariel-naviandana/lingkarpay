@@ -4,7 +4,7 @@ import { config } from "../config.js";
 import { requireUser } from "../lib/auth.js";
 import { createCheckout } from "../services/checkout.js";
 import { syncOrderFromGateway } from "../services/gatewayStatus.js";
-import { getOrderForUser } from "../services/orders.js";
+import { cancelOrder, getOrderForUser } from "../services/orders.js";
 
 const checkoutBody = z.object({
   circleId: z.number().int().positive(),
@@ -41,5 +41,12 @@ export async function checkoutRoutes(app: FastifyInstance) {
       return { ...order, gatewaySync };
     }
     return order;
+  });
+
+  // Batalkan pembayaran yang belum dibayar (order PENDING dengan transaksi di Midtrans).
+  app.post("/orders/:orderId/cancel", async (req) => {
+    const user = await requireUser(req);
+    const { orderId } = z.object({ orderId: z.string().min(1).max(60) }).parse(req.params);
+    return cancelOrder(user, orderId);
   });
 }

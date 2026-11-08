@@ -1,7 +1,9 @@
 import { after, before, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { computeSignature } from "../lib/signature.js";
 import {
   TEST_SERVER_KEY,
+  TEST_SIGNATURE_KEY,
   boot,
   notification,
   prepareTestDatabase,
@@ -617,5 +619,92 @@ describe("kelompok on-chain (createCircle)", () => {
     await ctx.pool.query("UPDATE chain_jobs SET status = 'failed'");
     const failed = await ctx.reconciliation.reconcileCircle(s.u1, s.circleId, false);
     assert.equal(failed.summary.issues, 1);
+  });
+});
+
+describe("pembatalan order", () => {
+  /** Tiruan Midtrans: balasan cancel dan Status API (bertanda tangan Signature Secret Key uji). */
+  function mockGateway(
+    order: { orderId: string; grossAmount: number },
+    cancelCode: string,
+    gatewayStatus: string,
+    statusCode = "200",
+  ) {
+    const gross = `${order.grossAmount}.00`;
+    ctx.midtrans.gatewayHttp.request = async (url: string) => {
+      if (url.endsWith("/cancel")) {
+        return { status: 200, ok: true, json: { status_code: cancelCode, status_message: "tiruan" } };
+      }
+      if (url.endsWith("/status")) {
+        const sig = computeSignature(order.orderId, statusCode, gross, TEST_SIGNATURE_KEY);
+        return {
+          status: 200,
+          ok: true,
+          json: {
+            order_id: order.orderId,
+            status_code: statusCode,
+            gross_amount: gross,
+            transaction_status: gatewayStatus,
+            transaction_id: "trx-cancel-test",
+            payment_type: "bank_transfer",
+            fraud_status: "accept",
+            signature_key: sig,
+          },
+        };
+      }
+      return { status: 201, ok: true, json: { token: "tok-x" } };
+    };
+  }
+
+  dbTest("membatalkan order PENDING: status FAILED, lalu anggota bisa membayar lagi", async () => {
+    const s = await seedCircle(ctx.pool);
+    const co = await checkoutFor(s, 0);
+    mockGateway(co, "200", "cancel");
+    const res = await ctx.orders.cancelOrder(asUser(s.members[0]!), co.orderId);
+    assert.equal(res.status, "FAILED");
+    assert.equal(await orderStatus(co.orderId), "FAILED");
+
+    ctx.midtrans.gatewayHttp.request = async () => ({ status: 201, ok: true, json: { token: "tok-baru" } });
+    const again = await checkoutFor(s, 0);
+    assert.notEqual(again.orderId, co.orderId);
+    assert.equal(again.status, "PENDING");
+  });
+
+  dbTest("belum ada transaksi di Midtrans (404): ditolak, order tetap PENDING", async () => {
+    const s = await seedCircle(ctx.pool);
+    const co = await checkoutFor(s, 0);
+    mockGateway(co, "404", "pending");
+    await assert.rejects(
+      () => ctx.orders.cancelOrder(asUser(s.members[0]!), co.orderId),
+      (e) => code(e) === "NO_GATEWAY_TRANSACTION",
+    );
+    assert.equal(await orderStatus(co.orderId), "PENDING");
+  });
+
+  dbTest("Midtrans menolak (412) karena ternyata sudah dibayar: status diselaraskan, bukan dibatalkan", async () => {
+    const s = await seedCircle(ctx.pool);
+    const co = await checkoutFor(s, 0);
+    mockGateway(co, "412", "settlement");
+    await assert.rejects(
+      () => ctx.orders.cancelOrder(asUser(s.members[0]!), co.orderId),
+      (e) => code(e) === "NOT_CANCELLABLE",
+    );
+    assert.equal(await orderStatus(co.orderId), "SETTLED");
+    assert.equal(await jobs(), 1);
+  });
+
+  dbTest("hanya pemilik order atau pembuat kelompok; order lunas tidak bisa dibatalkan", async () => {
+    const s = await seedCircle(ctx.pool, { memberCount: 3 });
+    const co = await checkoutFor(s, 1); // order milik anggota 2
+    mockGateway(co, "200", "cancel");
+    await assert.rejects(
+      () => ctx.orders.cancelOrder(asUser(s.members[2]!), co.orderId), // anggota 3 bukan pemilik/pembuat
+      (e) => code(e) === "FORBIDDEN",
+    );
+    await settle(co);
+    await assert.rejects(
+      () => ctx.orders.cancelOrder(asUser(s.members[1]!), co.orderId),
+      (e) => code(e) === "NOT_CANCELLABLE",
+    );
   });
 });

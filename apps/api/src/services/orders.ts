@@ -1,6 +1,8 @@
 import { pool, withTx } from "../db/pool.js";
-import { forbidden, notFound } from "../lib/errors.js";
+import { conflict, forbidden, notFound } from "../lib/errors.js";
 import type { AuthUser } from "./auth.js";
+import { syncOrderFromGateway } from "./gatewayStatus.js";
+import { cancelTransaction } from "./midtrans.js";
 import { transitionOrder, type OrderStatus } from "./orderStatus.js";
 
 /** Detail order untuk pemilik order atau pembuat kelompok. */
@@ -87,4 +89,36 @@ export async function expireOverdueOrders(): Promise<number> {
     if (res.outcome === "changed") n++;
   }
   return n;
+}
+
+/**
+ * Membatalkan order PENDING (pemilik order atau pembuat kelompok).
+ * Membatalkan transaksi di Midtrans lalu menyinkronkan status (cancel -> FAILED), sehingga
+ * anggota bisa membuat order baru. Order yang metode bayarnya belum dipilih tidak punya
+ * transaksi di Midtrans dan tidak bisa dibatalkan; tunggu kedaluwarsa.
+ */
+export async function cancelOrder(user: AuthUser, orderId: string) {
+  const order = await getOrderForUser(user, orderId); // sekaligus cek kepemilikan
+  if (order.status !== "PENDING") {
+    throw conflict("NOT_CANCELLABLE", `Order berstatus ${order.status}; hanya PENDING yang bisa dibatalkan`);
+  }
+
+  const result = await cancelTransaction(orderId);
+  if (result.statusCode === "404") {
+    throw conflict(
+      "NO_GATEWAY_TRANSACTION",
+      "Belum ada transaksi di Midtrans (metode bayar belum dipilih). Tunggu order kedaluwarsa.",
+    );
+  }
+
+  // Selaraskan dengan kenyataan di Midtrans (berhasil dibatalkan, atau ternyata sudah dibayar/kedaluwarsa).
+  const gatewaySync = await syncOrderFromGateway(orderId);
+  const latest = await getOrderForUser(user, orderId);
+  if (result.statusCode !== "200") {
+    throw conflict(
+      "NOT_CANCELLABLE",
+      `Midtrans menolak pembatalan (${result.statusCode}). Status order sekarang ${latest.status}.`,
+    );
+  }
+  return { ...latest, gatewaySync };
 }

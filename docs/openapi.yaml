@@ -288,6 +288,23 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
 
+  /orders/{orderId}/cancel:
+    post:
+      tags: [Pembayaran]
+      summary: Batalkan order PENDING yang sudah punya transaksi di Midtrans
+      description: |
+        Membatalkan transaksi di Midtrans lalu menyinkronkan status (cancel menjadi FAILED), sehingga anggota
+        bisa membuat order baru. Order yang metode bayarnya belum dipilih tidak punya transaksi di Midtrans
+        (409 NO_GATEWAY_TRANSACTION): tunggu kedaluwarsa.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Dibatalkan, content: { application/json: { schema: { $ref: "#/components/schemas/Order" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { description: "NOT_CANCELLABLE atau NO_GATEWAY_TRANSACTION", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
   /midtrans-webhook:
     post:
       tags: [Gateway]

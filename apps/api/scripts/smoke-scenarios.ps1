@@ -10,6 +10,7 @@
 
   Expire : set ORDER_EXPIRY_MINUTES=5 di .env, restart server, lalu jalankan. Jangan membayar.
   Cancel : buat VA di halaman Snap, lalu batalkan transaksi dari dashboard Midtrans (Transactions > Cancel).
+           Bila dashboard error, tambahkan -ApiCancel: skrip membatalkan lewat API (POST /orders/:orderId/cancel).
   Ewallet: bayar dengan GoPay atau ShopeePay lewat simulator Midtrans (jangan pakai aplikasi sungguhan).
 
   Hanya data dummy. Skrip tidak membaca atau mencetak key apa pun.
@@ -19,6 +20,7 @@ param(
   [ValidateSet("Expire", "Cancel", "Ewallet")]
   [string]$Scenario,
   [string]$Base = "http://localhost:3001",
+  [switch]$ApiCancel,
   [switch]$NoBrowser,
   [int]$TimeoutMinutes = 20
 )
@@ -107,9 +109,18 @@ if ($Scenario -eq "Cancel") {
   Write-Host ""
   Write-Host "  >>> LAKUKAN SEKARANG <<<" -ForegroundColor Yellow
   Write-Host "  1. Halaman Snap: pilih Bank Transfer > BCA supaya transaksi tercatat di Midtrans (jangan dibayar)."
-  Write-Host "  2. Dashboard Midtrans (sandbox) > Transactions > cari order ini > Cancel."
+  if ($ApiCancel) {
+    Write-Host "  2. Setelah nomor VA muncul, kembali ke sini dan tekan Enter (skrip membatalkan lewat API)."
+  } else {
+    Write-Host "  2. Dashboard Midtrans (sandbox) > Transactions > cari order ini > Cancel."
+  }
   Write-Host "     Order ID: $($co.orderId)"
   Open-Snap $co
+  if ($ApiCancel) {
+    Read-Host "  Tekan Enter setelah nomor VA muncul di halaman Snap" | Out-Null
+    $c = Api POST "/orders/$($co.orderId)/cancel" $null $a.token
+    Check "pembatalan lewat API" ($c.status -eq "FAILED") "status=$($c.status)"
+  }
   $o = Wait-Status $co.orderId $a.token @("FAILED", "EXPIRED", "SETTLED", "SETTLED_PENDING_CHAIN", "ANCHORED") 10
   if ($null -eq $o) {
     Check "order menjadi FAILED" $false "timeout $TimeoutMinutes menit"

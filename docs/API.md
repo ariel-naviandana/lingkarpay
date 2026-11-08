@@ -30,6 +30,7 @@ Kode error umum: `VALIDATION_ERROR` 400, `UNAUTHORIZED` 401, `FORBIDDEN` 403, `N
 | `GET /public-config` | → `{ environment:"sandbox", midtransClientKey, snapJsUrl }` untuk memuat Snap di frontend. |
 | `POST /checkout` | Body `{ circleId, periodId, memberId }` (memberId harus milik user yang login). 201 order baru, 200 bila memakai ulang order PENDING. |
 | `GET /orders/:orderId` | Detail order + `history`. Hanya pemilik order atau pembuat kelompok. `?sync=true` (saat PENDING) menanyakan Status API Midtrans lebih dulu. |
+| `POST /orders/:orderId/cancel` | Batalkan order PENDING yang sudah punya transaksi di Midtrans (VA/e-wallet sudah dipilih). Order menjadi FAILED sehingga anggota bisa membayar lagi. 409 `NOT_CANCELLABLE` (bukan PENDING, atau Midtrans menolak), 409 `NO_GATEWAY_TRANSACTION` (metode bayar belum dipilih; tunggu kedaluwarsa). |
 
 Respons `POST /checkout`:
 ```json

@@ -115,3 +115,28 @@ export async function getTransactionStatus(orderId: string): Promise<GatewayStat
     signatureValid: found ? verifySignature(data, SIGNATURE_KEY) : false,
   };
 }
+
+export interface CancelResult {
+  /** status_code dari body Midtrans: "200" berhasil, "412" tidak bisa dibatalkan, "404" tidak ada transaksi. */
+  statusCode: string;
+  message: string;
+}
+
+/**
+ * Membatalkan transaksi yang belum dibayar di Midtrans (POST /v2/{order_id}/cancel).
+ * Midtrans melaporkan hasilnya di body (status_code), bukan hanya di status HTTP.
+ */
+export async function cancelTransaction(orderId: string): Promise<CancelResult> {
+  const res = await call(`${API_URL}/${encodeURIComponent(orderId)}/cancel`, "POST");
+  if (res.status === 401) {
+    throw new AppError(
+      "GATEWAY_AUTH_FAILED",
+      "Server Key ditolak Midtrans (401). Periksa MIDTRANS_SERVER_KEY di .env",
+      502,
+    );
+  }
+  return {
+    statusCode: String(res.json.status_code ?? res.status),
+    message: String(res.json.status_message ?? ""),
+  };
+}

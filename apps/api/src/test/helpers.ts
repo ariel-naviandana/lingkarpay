@@ -64,10 +64,11 @@ export async function boot() {
   const payouts = await import("../services/payouts.js");
   const reconciliation = await import("../services/reconciliation.js");
   const circles = await import("../services/circles.js");
+  const orders = await import("../services/orders.js");
   await runMigrations(pool);
   const app = await buildApp();
   await app.ready();
-  return { app, pool, checkout, midtrans, outbox, payouts, reconciliation, circles };
+  return { app, pool, checkout, midtrans, outbox, payouts, reconciliation, circles, orders };
 }
 
 export async function resetDb(pool: Pool): Promise<void> {
