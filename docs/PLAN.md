@@ -58,7 +58,7 @@ Kode langkah 0-12 dan dokumentasi (14) sudah ditulis dan di-commit. Tes otomatis
 | 10 Outbox | Selesai. Dipakai modul chain dari jalur kontrak |
 | 11 Payout | Simulasi selesai dan terverifikasi (`-Both`): ditolak sebelum semua lunas, dana Rp20.000 tanpa biaya admin, payout ganda ditolak, periode 2 dibuka. Iris ditulis dari dokumentasi, belum diuji |
 | 12 Rekonsiliasi | Selesai, terverifikasi tanpa live (issues=0). Mode live belum dicoba |
-| 13 Tes | Ditunda |
+| 13 Tes | Ditulis, belum dijalankan: tes unit (signature, uang, hash, mesin status, tagihan) dan tes integrasi dengan database `lingkarpay_test` (checkout, webhook, pencairan, outbox, rekonsiliasi). Jalankan `npm test` |
 | 14 Dokumentasi | Selesai: `API.md`, `ERD.md`, `DESIGN.md`, `apps/api/README.md` |
 
 ## Yang masih perlu dibuktikan (belum pernah dijalankan)
@@ -79,3 +79,8 @@ Belum pernah dijalankan: mode `-Both` (pembayaran kedua, periode siap cair, payo
 Semua 30 pemeriksaan lolos: dua anggota membayar lewat simulator, periode 1 menjadi siap cair, payout simulasi Rp20.000 (iuran saja, tanpa biaya admin), payout ganda ditolak (409), periode 2 dibuka, selisih terkumpul vs dicairkan 0, rekonsiliasi akhir `issues=0`.
 
 Masih belum pernah dijalankan: penalti keterlambatan, order FAILED/EXPIRED, notifikasi duplikat, rekonsiliasi `live=true`, Iris, dan konsumsi outbox oleh modul chain (job `recordPayment` dan `markPayout` masih `queued`).
+
+## Struktur monorepo (2026-11-08)
+`README.md` di root menjelaskan jalur kerja dan struktur. Folder jalur lain sudah disiapkan dengan README berisi batas tanggung jawab dan antarmuka: `apps/web/`, `contracts/`, `apps/api/src/chain/` (modul chain), `docs/business-case/`.
+
+Antarmuka yang masih terbuka dengan jalur smart contract: backend belum membuat job `createCircle`/`startCircle`; worker chain menyinkronkan kelompok sendiri lewat query (lihat `apps/api/src/chain/README.md`). Putuskan bersama apakah cukup begitu atau perlu job outbox tambahan.
