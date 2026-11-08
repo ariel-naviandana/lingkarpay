@@ -95,3 +95,5 @@ Belum dicakup: Iris asli, rekonsiliasi `live=true`, dan konsumsi outbox oleh mod
 - `docs/openapi.yaml`, `docs/DEMO.md`, `docs/IRIS.md`.
 - Skrip `smoke-scenarios.ps1` (Expire, Cancel, Ewallet) dan `smoke.ps1 -Iris`: ditulis, belum dijalankan.
 - Skenario e-wallet (`smoke-scenarios.ps1 -Scenario Ewallet`): berhasil di sandbox (GoPay lewat simulator, SETTLED, `paymentType=qris`). Skenario Cancel dan Expire belum dijalankan.
+
+- `POST /orders/:orderId/cancel` dan `/expire` ditulis dan dites otomatis (87 tes lulus), tetapi di sandbox kelompok Midtrans menjawab 403 Access denied (lihat DEV_LOG). Skenario Cancel dan Expire lewat API tidak terbukti di sandbox; jalur kedaluwarsa lewat notifikasi Midtrans tetap bisa diuji dengan `ORDER_EXPIRY_MINUTES=5`.

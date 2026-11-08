@@ -30,6 +30,9 @@ Keputusan: kelompok yang dimulai menghasilkan job outbox `createCircle`; modul c
 ## 2026-11-08 — Payment gateway: uji e-wallet di sandbox
 Pembayaran e-wallet (GoPay lewat simulator Midtrans, kode QR) berhasil: order SETTLED, rekonsiliasi `issues=0`. Temuan: Midtrans melaporkannya dengan `payment_type` = `qris`, bukan `gopay`. Pemeriksaan jenis pembayaran di skrip uji disesuaikan. Dibayar hanya lewat simulator, tidak memakai aplikasi sungguhan. Catatan: kanal yang diaktifkan di kode adalah `gopay` dan `shopeepay` (bukan kanal QRIS umum), tetapi pada GoPay QR Midtrans memakai istilah qris; di business case dan presentasi sebutkan sebagai "e-wallet (GoPay)".
 
+## 2026-11-08 — Payment gateway: cancel dan expire lewat API ditolak Midtrans
+Ditambahkan `POST /orders/:orderId/cancel` dan `/expire` (memanggil Cancel/Expire API Midtrans lalu menyinkronkan status). Di sandbox kelompok keduanya dijawab `403 {"error":"Access denied"}`, bukan error Midtrans biasa, padahal Status API (`GET`) dan Snap (`POST` ke host lain) dengan key yang sama berhasil. Dashboard Midtrans juga gagal membatalkan transaksi serupa ("technical error"). Header `Content-Type` dan `User-Agent` sudah ditambahkan dan tidak mengubah hasil. Penyebab belum diketahui (dugaan: pembatasan akun/IP/jaringan di sisi Midtrans). Keputusan: tidak dikejar lebih lanjut karena bukan bagian tugas atau rubrik; bukti skenario gagal dan kedaluwarsa memakai tes otomatis dan notifikasi `expire` asli dari Midtrans (`ORDER_EXPIRY_MINUTES=5`).
+
 ## Template entri
 ```
 ## YYYY-MM-DD — <jalur>
