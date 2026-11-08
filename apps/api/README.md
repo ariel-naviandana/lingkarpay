@@ -25,6 +25,14 @@ cloudflared tunnel --url http://localhost:3001
 3. Lihat log server: `webhook diproses ... outcome: unknown_order` berarti signature valid dan transaksi `TEST-...` tercatat. Cek juga `http://localhost:3001/status/<orderId>`: `signatureValid: true` membuktikan rumus signature benar.
 4. Tombol "Test notification URL" mengirim contoh dengan signature palsu, jadi 401 itu wajar.
 
+## Uji alur penuh (smoke test)
+```powershell
+cd C:\coding\lingkarpay\apps\api
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1          # satu anggota membayar
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1 -Both    # dua anggota + pencairan simulasi
+```
+Skrip membuat pengguna dan kelompok dummy lewat API, membuka halaman Snap, lalu menunggu pembayaran di simulator Midtrans (VA). Hasil tiap pemeriksaan dicetak sebagai PASS/FAIL.
+
 ## Struktur
 ```
 src/config.ts        env tervalidasi
