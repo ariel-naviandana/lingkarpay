@@ -1,4 +1,4 @@
-import { config } from "../config.js";
+import { config, SIGNATURE_KEY } from "../config.js";
 import { AppError } from "../lib/errors.js";
 import { requestJson, type HttpResult } from "../lib/http.js";
 import { verifySignature } from "../lib/signature.js";
@@ -109,6 +109,6 @@ export async function getTransactionStatus(orderId: string): Promise<GatewayStat
     found,
     httpStatus: res.status,
     data,
-    signatureValid: found ? verifySignature(data, config.MIDTRANS_SERVER_KEY) : false,
+    signatureValid: found ? verifySignature(data, SIGNATURE_KEY) : false,
   };
 }

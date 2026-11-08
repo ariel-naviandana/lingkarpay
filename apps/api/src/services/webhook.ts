@@ -1,5 +1,5 @@
 import type { FastifyBaseLogger } from "fastify";
-import { config } from "../config.js";
+import { config, SIGNATURE_KEY } from "../config.js";
 import { pool, withTx } from "../db/pool.js";
 import { sha256Hex } from "../lib/hash.js";
 import { computeSignature, verifySignature } from "../lib/signature.js";
@@ -35,7 +35,7 @@ export async function handleNotification(
   const { signature_key: _omit, ...safePayload } = body;
   const payloadJson = JSON.stringify(safePayload);
 
-  if (!verifySignature(body, config.MIDTRANS_SERVER_KEY)) {
+  if (!verifySignature(body, SIGNATURE_KEY)) {
     await pool.query(
       `INSERT INTO webhook_events
          (order_id, payload_hash, transaction_status, signature_valid, processed, outcome, payload)
@@ -46,7 +46,7 @@ export async function handleNotification(
     log.warn({ order_id: orderId }, "webhook ditolak: signature tidak cocok");
     if (config.DEV_TOOLS) {
       // Diagnostik pengembangan. Tidak pernah mencetak Server Key, hanya sifat-sifatnya.
-      const key = config.MIDTRANS_SERVER_KEY;
+      const key = SIGNATURE_KEY;
       const gross = String(body.gross_amount);
       const variants: Record<string, string> = {
         as_received: gross,
@@ -65,9 +65,10 @@ export async function handleNotification(
           gross_amount_type: typeof body.gross_amount,
           signature_type: typeof body.signature_key,
           signature_length: typeof body.signature_key === "string" ? body.signature_key.length : null,
-          server_key_length: key.length,
-          server_key_has_whitespace: /\s/.test(key),
-          server_key_looks_like_midtrans: /^(SB-)?Mid-server-/.test(key),
+          verify_key_length: key.length,
+          separate_signature_key_configured: config.MIDTRANS_SIGNATURE_KEY !== undefined,
+          verify_key_has_whitespace: /\s/.test(key),
+          verify_key_looks_like_server_key: /^(SB-)?Mid-server-/.test(key),
           matched_gross_variants: matched,
         },
         "diagnostik signature (DEV_TOOLS)",

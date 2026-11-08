@@ -13,6 +13,12 @@ const schema = z.object({
 
   MIDTRANS_SERVER_KEY: z.string().min(1, "wajib diisi"),
   MIDTRANS_CLIENT_KEY: z.string().min(1, "wajib diisi"),
+  // Signature Secret Key (Settings > Access Keys). Dipakai hanya untuk memverifikasi signature_key
+  // notifikasi dan Status API. Bila kosong, Server Key dipakai.
+  MIDTRANS_SIGNATURE_KEY: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim().length > 0 ? v.trim() : undefined)),
 
   ORDER_EXPIRY_MINUTES: z.coerce.number().int().min(5).default(60),
   DEFAULT_ADMIN_FEE: z.coerce.number().int().min(0).default(1000),
@@ -41,3 +47,6 @@ function load(): Config {
 }
 
 export const config: Config = load();
+
+/** Kunci untuk memverifikasi signature_key: Signature Secret Key bila diisi, jika tidak Server Key. */
+export const SIGNATURE_KEY: string = config.MIDTRANS_SIGNATURE_KEY ?? config.MIDTRANS_SERVER_KEY;

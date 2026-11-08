@@ -19,7 +19,7 @@ Berlaku untuk semua pekerjaan di `apps/api`. Ringkas dan bisa dicek.
 
 ## 3. Pembayaran
 - Sumber kebenaran status bayar hanya: (a) webhook dengan signature terverifikasi, atau (b) Status API Midtrans. Halaman redirect setelah bayar hanya tampilan.
-- Signature webhook: `SHA512(order_id + status_code + gross_amount + ServerKey)`. `gross_amount` dipakai sebagai string persis seperti diterima. Jangan diformat ulang.
+- Signature webhook: `SHA512(order_id + status_code + gross_amount + kunci)`; kuncinya Signature Secret Key (`MIDTRANS_SIGNATURE_KEY`) bila diisi, jika tidak Server Key. Pada dashboard sandbox kelompok, Server Key tidak cocok dan Signature Secret Key dipakai. `gross_amount` dipakai sebagai string persis seperti diterima. Jangan diformat ulang.
 - Bandingkan signature dengan perbandingan waktu-konstan (`crypto.timingSafeEqual`).
 - Webhook wajib: verifikasi signature, cek duplikat, cek `gross_amount` sama dengan tagihan, baru ubah status.
 - Webhook selalu membalas cepat (HTTP 200) setelah event tercatat. Pekerjaan lanjutan lewat outbox, bukan di dalam request.
