@@ -94,6 +94,15 @@ Belum dicakup: Iris asli, rekonsiliasi `live=true`, dan konsumsi outbox oleh mod
 - Outbox `createCircle` + `markCircleCreated` (migrasi 002): terverifikasi. Migrasi terapan, `npm run typecheck` bersih, `npm test` 71 lulus, 0 gagal.
 - `docs/openapi.yaml`, `docs/DEMO.md`, `docs/IRIS.md`.
 - Skrip `smoke-scenarios.ps1` (Expire, Cancel, Ewallet) dan `smoke.ps1 -Iris`: ditulis, belum dijalankan.
-- Skenario e-wallet (`smoke-scenarios.ps1 -Scenario Ewallet`): berhasil di sandbox (GoPay lewat simulator, SETTLED, `paymentType=qris`). Skenario Cancel dan Expire belum dijalankan.
+- Skenario e-wallet (`smoke-scenarios.ps1 -Scenario Ewallet`): berhasil di sandbox (GoPay lewat simulator, SETTLED, `paymentType=qris`).
 
-- `POST /orders/:orderId/cancel` dan `/expire` ditulis dan dites otomatis (87 tes lulus), tetapi di sandbox kelompok Midtrans menjawab 403 Access denied (lihat DEV_LOG). Skenario Cancel dan Expire lewat API tidak terbukti di sandbox; jalur kedaluwarsa lewat notifikasi Midtrans tetap bisa diuji dengan `ORDER_EXPIRY_MINUTES=5`.
+- `POST /orders/:orderId/cancel` dan `/expire`: terverifikasi di sandbox (`smoke-scenarios.ps1 -Scenario Cancel -ApiCancel` dan `-Scenario Expire -ApiExpire`, semua lolos; 87 tes otomatis lulus). Syarat: server key harus punya izin Capability Cancel dan Expire = Write (lihat DEV_LOG).
+
+## Ringkasan skenario pembayaran terverifikasi di Midtrans sandbox (2026-11-08)
+| Skenario | Cara uji | Hasil |
+|---|---|---|
+| Sukses VA BCA | `smoke.ps1 -Both` | Lolos (30 pemeriksaan), termasuk pencairan simulasi |
+| Sukses e-wallet | `smoke-scenarios.ps1 -Scenario Ewallet` | Lolos (GoPay lewat simulator, `paymentType=qris`) |
+| Kedaluwarsa | `smoke-scenarios.ps1 -Scenario Expire -ApiExpire` | Lolos (EXPIRED, order baru bisa dibuat) |
+| Dibatalkan | `smoke-scenarios.ps1 -Scenario Cancel -ApiCancel` | Lolos (FAILED, order baru bisa dibuat) |
+| Duplikat, signature salah, jumlah tidak cocok, tidak berurutan | `npm test` | Lolos (87 tes) |

@@ -4,6 +4,7 @@ Untuk progress report (di kelas, sebelum 24 November) dan presentasi (mulai 26 N
 
 ## H-1: persiapan
 - [ ] Docker Desktop menyala, `docker compose up -d` (Postgres).
+- [ ] Server key punya izin Snap Checkout, Core API, Cancel transaction, dan Expire transaction = Write (lihat `apps/api/README.md`).
 - [ ] `apps\api\.env` berisi: `DATABASE_URL`, `MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`, `MIDTRANS_SIGNATURE_KEY`.
 - [ ] `npm run migrate`, `npm run typecheck`, `npm test` (66+ tes lulus).
 - [ ] Nyalakan tunnel **sekali** dan jangan dimatikan: `cloudflared tunnel --url http://localhost:3001`. Salin alamatnya ke Notification URL di dashboard Midtrans (`.../midtrans-webhook`), Save, reload untuk memastikan.

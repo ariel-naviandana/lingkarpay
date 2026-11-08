@@ -14,7 +14,9 @@ npm run dev                               # http://localhost:3001
 ```
 
 ## .env
-Salin `.env.example` ke `.env`, lalu isi `MIDTRANS_SERVER_KEY` dan `MIDTRANS_CLIENT_KEY` sendiri (jangan dikirim ke chat atau di-commit). Tambahkan baris `DATABASE_URL` dari `.env.example`. Isi juga `MIDTRANS_SIGNATURE_KEY` dengan Signature Secret Key dari Settings > Access Keys (dipakai memverifikasi signature notifikasi dan Status API). Restart `npm run dev` setiap `.env` berubah. Server menolak start bila ada variabel wajib yang kurang.
+Salin `.env.example` ke `.env`, lalu isi `MIDTRANS_SERVER_KEY` dan `MIDTRANS_CLIENT_KEY` sendiri (jangan dikirim ke chat atau di-commit). Tambahkan baris `DATABASE_URL` dari `.env.example`. Isi juga `MIDTRANS_SIGNATURE_KEY` dengan Signature Secret Key dari Settings > Access Keys (dipakai memverifikasi signature notifikasi dan Status API). Restart `npm run dev` setiap `.env` berubah.
+
+Izin Server Key (dashboard Midtrans: Settings > Access Keys > Generate server key): **Snap Checkout = Write**, **Core API = Write**, serta Capability **Cancel transaction = Write** dan **Expire transaction = Write** (bawaannya None; tanpa ini cancel/expire dijawab `403 Access denied`). Refund dan produk lain tidak perlu diaktifkan. Setelah mengganti key di `.env`, restart server; log start menampilkan sidik jari key (`server_key_fp`) untuk memastikan yang termuat. Server menolak start bila ada variabel wajib yang kurang.
 
 ## Uji spike webhook
 ```powershell
