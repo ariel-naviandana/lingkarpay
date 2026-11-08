@@ -1,11 +1,11 @@
 import { config } from "../config.js";
 import { AppError } from "../lib/errors.js";
+import { requestJson, type HttpResult } from "../lib/http.js";
 import { verifySignature } from "../lib/signature.js";
 
 // Hanya sandbox. Tidak ada mode produksi di prototipe ini.
 const SNAP_URL = "https://app.sandbox.midtrans.com/snap/v1/transactions";
 const API_URL = "https://api.sandbox.midtrans.com/v2";
-const TIMEOUT_MS = 15_000;
 
 const authHeader = () =>
   "Basic " + Buffer.from(config.MIDTRANS_SERVER_KEY + ":").toString("base64");
@@ -37,13 +37,20 @@ export interface SnapParams {
   enabledPayments?: string[];
 }
 
-async function gatewayFetch(url: string, init: RequestInit): Promise<Response> {
+async function call(url: string, method: "GET" | "POST", body?: unknown): Promise<HttpResult> {
   try {
-    return await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    return await requestJson(url, {
+      method,
+      body,
+      headers: {
+        Accept: "application/json",
+        Authorization: authHeader(),
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      },
+    });
   } catch (err) {
     // Sertakan host dan kode jaringan (mis. ETIMEDOUT, ENOTFOUND) agar penyebabnya terlihat.
-    const code =
-      (err as { cause?: { code?: string } }).cause?.code ?? (err as Error).name ?? "unknown";
+    const code = (err as { code?: string }).code ?? (err as Error).name ?? "unknown";
     throw new AppError(
       "GATEWAY_UNREACHABLE",
       `Tidak dapat menghubungi ${new URL(url).host} (${code})`,
@@ -66,16 +73,8 @@ export async function createSnapTransaction(
   if (p.items) body.item_details = p.items;
   if (p.enabledPayments) body.enabled_payments = p.enabledPayments;
 
-  const res = await gatewayFetch(SNAP_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      Authorization: authHeader(),
-    },
-    body: JSON.stringify(body),
-  });
-  const data = (await res.json().catch(() => ({}))) as Record<string, any>;
+  const res = await call(SNAP_URL, "POST", body);
+  const data = res.json;
   if (!res.ok || typeof data.token !== "string") {
     const msg = Array.isArray(data.error_messages)
       ? data.error_messages.join("; ")
@@ -95,10 +94,7 @@ export interface GatewayStatus {
 }
 
 export async function getTransactionStatus(orderId: string): Promise<GatewayStatus> {
-  const res = await gatewayFetch(
-    `${API_URL}/${encodeURIComponent(orderId)}/status`,
-    { headers: { Accept: "application/json", Authorization: authHeader() } },
-  );
+  const res = await call(`${API_URL}/${encodeURIComponent(orderId)}/status`, "GET");
   if (res.status === 401) {
     // Server Key ditolak. Jangan dianggap "order tidak ditemukan".
     throw new AppError(
@@ -107,7 +103,7 @@ export async function getTransactionStatus(orderId: string): Promise<GatewayStat
       502,
     );
   }
-  const data = (await res.json().catch(() => ({}))) as Record<string, any>;
+  const data = res.json;
   const found = res.ok && String(data.status_code) !== "404";
   return {
     found,

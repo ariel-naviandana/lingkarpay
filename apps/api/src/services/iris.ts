@@ -1,5 +1,6 @@
 import { config } from "../config.js";
 import { AppError } from "../lib/errors.js";
+import { requestJson } from "../lib/http.js";
 
 // Midtrans Iris (disbursement) sandbox. Creator membuat payout, approver menyetujuinya.
 // Catatan: bentuk request/respons mengikuti dokumentasi Iris dan belum diuji di sandbox kelompok.
@@ -19,14 +20,8 @@ async function irisFetch(path: string, key: string, body: unknown, idempotencyKe
   };
   if (idempotencyKey) headers["X-Idempotency-Key"] = idempotencyKey;
   try {
-    const res = await fetch(`${BASE}${path}`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    const data = (await res.json().catch(() => ({}))) as Record<string, any>;
-    return { ok: res.ok, status: res.status, data };
+    const r = await requestJson(`${BASE}${path}`, { method: "POST", headers, body, timeoutMs: TIMEOUT_MS });
+    return { ok: r.ok, status: r.status, data: r.json };
   } catch {
     throw new AppError("IRIS_UNREACHABLE", "Tidak dapat menghubungi Midtrans Iris", 502);
   }
