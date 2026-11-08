@@ -708,3 +708,37 @@ describe("pembatalan order", () => {
     );
   });
 });
+
+describe("parser body JSON", () => {
+  dbTest("POST tanpa body dengan Content-Type JSON diterima parser (validasi yang menolak, bukan parser)", async () => {
+    const res = await ctx.app.inject({
+      method: "POST",
+      url: "/auth/login",
+      headers: { "content-type": "application/json" },
+      payload: "",
+    });
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.json<{ error: { code: string } }>().error.code, "VALIDATION_ERROR");
+  });
+
+  dbTest("JSON rusak ditolak (400)", async () => {
+    const res = await ctx.app.inject({
+      method: "POST",
+      url: "/auth/login",
+      headers: { "content-type": "application/json" },
+      payload: "{bukan json",
+    });
+    assert.equal(res.statusCode, 400);
+  });
+
+  dbTest("kunci __proto__ dibuang dari body", async () => {
+    const res = await ctx.app.inject({
+      method: "POST",
+      url: "/midtrans-webhook",
+      headers: { "content-type": "application/json" },
+      payload: '{"__proto__":{"admin":true},"order_id":"X","status_code":"200","gross_amount":"1.00"}',
+    });
+    // lolos parser; ditolak karena signature tidak ada
+    assert.equal(res.statusCode, 401);
+  });
+});

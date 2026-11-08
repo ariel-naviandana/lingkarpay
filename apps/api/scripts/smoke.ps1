@@ -29,6 +29,7 @@ function Api([string]$Method, [string]$Path, $Body = $null, [string]$Token = "")
   if ($Token) { $headers["Authorization"] = "Bearer $Token" }
   $params = @{ Method = $Method; Uri = "$Base$Path"; Headers = $headers; ContentType = "application/json" }
   if ($null -ne $Body) { $params["Body"] = ($Body | ConvertTo-Json -Depth 6) }
+  elseif ($Method -eq "POST") { $params["Body"] = "{}" }
   try { return Invoke-RestMethod @params }
   catch {
     $msg = $_.ErrorDetails.Message

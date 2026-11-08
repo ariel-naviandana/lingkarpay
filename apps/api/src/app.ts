@@ -22,6 +22,19 @@ export async function buildApp(): Promise<FastifyInstance> {
     },
   });
 
+  // Terima body kosong pada Content-Type JSON (mis. POST aksi tanpa data) sebagai {}.
+  // Bawaan Fastify menolaknya dengan 400. Kunci berbahaya "__proto__" dibuang saat parsing.
+  app.removeContentTypeParser("application/json");
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
+    const text = typeof body === "string" ? body : body.toString("utf8");
+    if (text.trim() === "") return done(null, {});
+    try {
+      done(null, JSON.parse(text, (key, value) => (key === "__proto__" ? undefined : value)));
+    } catch {
+      done(Object.assign(new Error("Body JSON tidak valid"), { statusCode: 400 }), undefined);
+    }
+  });
+
   app.addHook("onClose", async () => {
     await pool.end();
   });
