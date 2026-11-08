@@ -6,7 +6,7 @@ Untuk progress report (di kelas, sebelum 24 November) dan presentasi (mulai 26 N
 - [ ] Docker Desktop menyala, `docker compose up -d` (Postgres).
 - [ ] Server key punya izin Snap Checkout, Core API, Cancel transaction, dan Expire transaction = Write (lihat `apps/api/README.md`).
 - [ ] `apps\api\.env` berisi: `DATABASE_URL`, `MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`, `MIDTRANS_SIGNATURE_KEY`.
-- [ ] `npm run migrate`, `npm run typecheck`, `npm test` (66+ tes lulus).
+- [ ] `npm run migrate`, `npm run typecheck`, `npm test` (87 tes lulus).
 - [ ] Nyalakan tunnel **sekali** dan jangan dimatikan: `cloudflared tunnel --url http://localhost:3001`. Salin alamatnya ke Notification URL di dashboard Midtrans (`.../midtrans-webhook`), Save, reload untuk memastikan.
 - [ ] `powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1 -Both` lolos semua.
 - [ ] Rekam **video demo cadangan** dari smoke test (koneksi ke Midtrans sempat lambat, tunnel gratis tanpa jaminan).
@@ -23,6 +23,16 @@ Untuk progress report (di kelas, sebelum 24 November) dan presentasi (mulai 26 N
 6. **Rekonsiliasi** `GET /reports/reconciliation?circleId=...`: selisih terkumpul vs dicairkan = 0, `issues=0`.
 7. **Keamanan (1 menit).** Tunjukkan tes otomatis (`npm test`): signature palsu ditolak (401), jumlah tidak cocok ditolak, notifikasi duplikat diabaikan, notifikasi tidak berurutan tidak menurunkan status.
 8. **Sambungan ke blockchain.** Tunjukkan satu baris `chain_jobs` (payload tanpa data pribadi) dan jelaskan: modul chain mengambil job, mencatat ke contract di Sepolia, lalu memanggil `markJobConfirmed` sehingga order menjadi ANCHORED.
+
+## Skenario tambahan (bila waktu cukup)
+Dari `apps\api`. Semuanya di Midtrans sandbox; di halaman Snap pilih Bank Transfer > BCA (jangan dibayar) atau e-wallet.
+| Skenario | Perintah | Yang ditunjukkan |
+|---|---|---|
+| E-wallet | `smoke-scenarios.ps1 -Scenario Ewallet` | Bayar GoPay lewat simulator; status SETTLED |
+| Kedaluwarsa | `smoke-scenarios.ps1 -Scenario Expire -ApiExpire` | Order EXPIRED, anggota bisa membayar lagi |
+| Dibatalkan | `smoke-scenarios.ps1 -Scenario Cancel -ApiCancel` | Order FAILED, anggota bisa membayar lagi |
+
+Catatan: bagian "tercatat di blockchain" (langkah 8) hanya bisa didemokan penuh setelah worker chain dari jalur smart contract berjalan; sampai saat itu tunjukkan job `queued` di outbox dan jelaskan alurnya.
 
 ## Jika ada yang gagal
 | Masalah | Tindakan |

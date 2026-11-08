@@ -12,6 +12,14 @@ Dompet arisan digital: iuran dibayar lewat payment gateway (Midtrans sandbox), a
 
 Pembagian orang per jalur: lihat Tabel 25 di proposal. Antarmuka antar jalur ditulis di `docs/` dan jadi kontrak bersama.
 
+## Status
+| Jalur | Status |
+|---|---|
+| Payment gateway (`apps/api`) | Selesai dan terverifikasi: 87 tes, smoke test, skenario Midtrans sandbox. Rincian: `docs/PLAN.md` |
+| Smart contract (`contracts/`, `apps/api/src/chain/`) | Kerangka awal disiapkan (belum dikompilasi); fungsi rumit ditandai `TODO(smart-contract)` |
+| Frontend (`apps/web/`) | Kerangka awal disiapkan (belum dijalankan); halaman lanjutan ditandai `TODO(frontend)` |
+| Business case (`docs/business-case/`) | Belum dimulai; daftar isi dan angka prototipe tersedia |
+
 ## Struktur
 ```
 lingkarpay/
@@ -19,19 +27,21 @@ lingkarpay/
 ├── docker-compose.yml         Postgres lokal (port 5433)
 ├── apps/
 │   ├── api/                   jalur payment gateway (Fastify + TypeScript + Postgres)
-│   │   ├── src/chain/         modul chain: worker outbox → contract (jalur smart contract)
-│   │   ├── src/routes|services|db|lib
+│   │   ├── src/               config, routes, services, db, test
+│   │   ├── src/chain/         modul chain: worker outbox -> contract (jalur smart contract)
 │   │   ├── db/migrations/     skema SQL
-│   │   └── scripts/smoke.ps1  uji alur penuh
-│   └── web/                   jalur frontend
-├── contracts/                 jalur smart contract (Hardhat)
+│   │   └── scripts/           smoke test PowerShell (alur penuh, skenario)
+│   └── web/                   jalur frontend (Vite + React, kerangka awal)
+├── contracts/                 jalur smart contract (Hardhat, kerangka awal)
 │   └── deployments/           alamat dan ABI hasil deploy Sepolia
 └── docs/
     ├── DESIGN.md              rancangan antarmuka v1 (kontrak antar jalur)
-    ├── API.md                 endpoint backend
+    ├── API.md, openapi.yaml   endpoint backend (teks dan OpenAPI)
     ├── ERD.md                 skema database
     ├── RULES.md               aturan kerja
-    ├── PLAN.md                rencana dan status pengerjaan
+    ├── PLAN.md                status dan bukti pengerjaan
+    ├── DEMO.md                runbook demo dan progress report
+    ├── IRIS.md                payout Midtrans Iris (opsional)
     ├── DEV_LOG.md             log pengembangan ide dan keputusan
     ├── AI_STATEMENT.md        pernyataan penggunaan alat AI
     └── business-case/         jalur business case
@@ -46,8 +56,12 @@ Portal verifikasi ─ baca langsung dari contract (bukan dari database)
 ```
 
 ## Menjalankan
-Backend: lihat `apps/api/README.md`. Postgres: `docker compose up -d` di root.
-Frontend dan contract: lihat README di foldernya masing-masing.
+```powershell
+docker compose up -d          # Postgres, di root repo
+cd apps\api; npm install; npm run migrate; npm run dev     # backend, http://localhost:3001
+cd apps\web; npm install; npm run dev                       # frontend, http://localhost:5173 (kerangka)
+```
+Rincian, termasuk `.env` dan uji dengan Midtrans sandbox: `apps/api/README.md`. Contract: `contracts/README.md`.
 
 ## Konvensi
 - Satu langkah pekerjaan = satu commit kecil, lalu push. Pesan commit: `feat(api): ...`, `fix(web): ...`, `test(contracts): ...`, `docs: ...`.

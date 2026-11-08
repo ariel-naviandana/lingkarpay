@@ -1,108 +1,68 @@
-# Rencana Pengerjaan — Jalur Payment Gateway
+# Status dan Rencana — Jalur Payment Gateway
 
-Target: prototipe dibekukan 25 Nov, business case 24 Nov, presentasi mulai 26 Nov. Progress report dijadwalkan di kelas sebelum 24 Nov, jadi alur webhook dan checkout harus bisa didemokan paling lambat pertengahan November.
+Acuan: 8 November 2026. Tenggat: progress report di kelas sebelum 24 November, business case 24 November, pembekuan prototipe 25 November, presentasi 26 November sampai 15 Desember (pengurangan nilai mulai 3 Desember).
 
-Aturan commit: tiap langkah = commit + push (lihat `RULES.md`). Kolom "Selesai bila" adalah kriteria penerimaan.
+## Ringkasan
+Seluruh tugas jalur payment gateway sudah selesai dan terverifikasi di komputer pengembang dan di Midtrans sandbox: `npm run typecheck` bersih, `npm test` 87 lulus, dua smoke test alur penuh lolos, dan lima skenario pembayaran terbukti di sandbox sungguhan. Yang tersisa hanya hal opsional dan hal yang bergantung pada jalur lain (lihat bagian bawah).
 
-| # | Langkah | Selesai bila | Commit |
+## Langkah pengerjaan
+| # | Langkah | Status | Bukti |
 |---|---|---|---|
-| 0 | Cek baseline repo | Remote/branch jelas, `.env` tidak terlacak, `.gitignore` di root ada | `chore: baseline repo` |
-| 1 | Dokumen aturan, rancangan, rencana | `docs/RULES.md`, `DESIGN.md`, `PLAN.md` ada di repo | `docs: aturan, rancangan v1, rencana` |
-| 2 | Spike B: webhook masuk | Notifikasi transaksi uji tiba di server dengan signature valid. Tambah `ipv4first`, endpoint `/status/:orderId` yang memverifikasi signature | `fix(api): ipv4first` dan `feat(api): status endpoint` |
-| 3 | Struktur proyek | `src/config.ts` (validasi env), pemisahan `routes/services/db/lib`, skrip `typecheck` dan `test` | `refactor(api): struktur modul` |
-| 4 | Database | `docker-compose.yml` Postgres, migrasi skema sesuai DESIGN §3, skrip migrate | `feat(api): skema database` |
-| 5 | Mesin status pesanan | Satu modul transisi + tes semua transisi sah/tidak sah | `feat(api): mesin status pesanan` |
-| 6 | API kelompok, anggota, periode | Endpoint DESIGN §4 (bagian circles), data lewat DB, tes | `feat(api): API circles` |
-| 7 | Tagihan | `computeBill` (iuran + penalti + admin) dengan tes angka | `feat(api): perhitungan tagihan` |
-| 8 | Checkout | Order PENDING idempoten + token Snap; panggilan ulang tidak membuat order ganda | `feat(api): checkout idempoten` |
-| 9 | Webhook | Signature (timing-safe), dedupe, cek jumlah, update status via mesin status, balas 200; fallback Status API untuk notifikasi tidak berurutan | `feat(api): webhook aman` |
-| 10 | Outbox ke modul chain | Order SETTLED menulis `chain_jobs` sekali; antarmuka tertulis di DESIGN §7 | `feat(api): outbox chain` |
-| 11 | Pencairan | Simulasi payout + `markPayout` job; spike Iris dicatat hasilnya | `feat(api): simulasi payout` |
-| 12 | Rekonsiliasi | Endpoint laporan mencocokkan orders ↔ gateway ↔ chain | `feat(api): rekonsiliasi` |
-| 13 | Skenario uji | Sukses, gagal, kedaluwarsa, webhook duplikat, signature salah, jumlah tidak cocok, chain gagal | `test(api): skenario payment` |
-| 14 | Dokumentasi | API (markdown/OpenAPI), ERD (Mermaid), catatan penggunaan AI | `docs: API dan ERD` |
+| 0 | Baseline repo | Selesai | Remote, `.gitignore`, `.env` tidak terlacak |
+| 1 | Aturan, rancangan, rencana | Selesai | `RULES.md`, `DESIGN.md`, `PLAN.md` |
+| 2 | Spike webhook | Selesai | Webhook pending dan settlement masuk lewat tunnel; signature valid; status pengiriman Completed |
+| 3 | Struktur proyek | Selesai | `config` tervalidasi, `routes/services/db/lib`, `tsconfig` |
+| 4 | Database | Selesai | Migrasi 001 dan 002 diterapkan |
+| 5 | Mesin status pesanan | Selesai | Tes unit semua transisi |
+| 6 | API kelompok, anggota, periode, auth | Selesai | Smoke test |
+| 7 | Tagihan (iuran + penalti + biaya admin) | Selesai | Tes unit, tes integrasi, smoke test |
+| 8 | Checkout idempoten | Selesai | Smoke test, tes (termasuk dua checkout serentak) |
+| 9 | Webhook aman | Selesai | Sandbox sungguhan; tes duplikat, serentak, signature palsu, jumlah tidak cocok, tidak berurutan |
+| 10 | Outbox ke modul chain | Selesai | Tes; job `createCircle`, `recordPayment`, `markPayout` |
+| 11 | Pencairan | Simulasi selesai | Smoke test `-Both`. Iris ditulis dari dokumentasi, belum diuji (opsional, lihat `IRIS.md`) |
+| 12 | Rekonsiliasi | Selesai | Tes dan smoke test. Mode `live=true` belum dicoba |
+| 13 | Tes otomatis | Selesai | 87 tes, 16 suite, 0 gagal |
+| 14 | Dokumentasi | Selesai | `API.md`, `openapi.yaml`, `ERD.md`, `DESIGN.md`, `DEV_LOG.md`, `AI_STATEMENT.md`, `DEMO.md`, README tiap jalur |
+| + | Cancel dan expire lewat API | Selesai | Terbukti di sandbox (butuh izin Capability pada server key) |
 
-## Urutan dan alasan
-- Langkah 1 lebih dulu karena jalur frontend dan kontrak bergantung pada antarmuka v1.
-- Langkah 2 sebelum 3 sampai 14 karena spike webhook adalah titik risiko terbesar (tunnel + signature).
-- Langkah 5 sebelum 8 dan 9: semua perubahan status harus lewat satu modul.
-- Langkah 10 hanya menulis outbox. Mengirim ke Sepolia adalah jalur smart contract.
+## Verifikasi
+Perintah dijalankan dari `apps\api` (Windows PowerShell). Tes membutuhkan Postgres (`docker compose up -d`).
 
-## Prioritas bila waktu mepet
-1. Checkout + webhook aman + status pesanan (langkah 2 sampai 9)
-2. Outbox ke chain (10)
-3. Rekonsiliasi dan skenario uji (12, 13)
-4. Simulasi payout (11)
-5. Dokumentasi (14) — dikerjakan sambil jalan, jangan ditunda ke akhir
-
-## Yang butuh aksi manual
-- Dashboard Midtrans: pastikan Notification URL tersimpan dan lihat notification history (langkah 2).
-- Perbarui Notification URL setiap tunnel Cloudflared restart.
-- Nyalakan Docker Desktop untuk Postgres (langkah 4).
-- Isi Server Key di `.env` sendiri. Kunci tidak boleh dikirim ke chat.
-
-## Status (2026-11-08)
-Kode langkah 0-12 dan dokumentasi (14) sudah ditulis dan di-commit. Tes otomatis (langkah 13) sengaja ditunda atas permintaan, jadi belum ada tes.
-
-| Langkah | Status |
-|---|---|
-| 0, 1 | Selesai |
-| 2 Spike webhook | Selesai dan terverifikasi (2026-11-08): webhook pending dan settlement masuk lewat tunnel, signature valid, status pengiriman Completed. Signature dihitung dari Signature Secret Key (`MIDTRANS_SIGNATURE_KEY`), bukan Server Key |
-| 3 Struktur | Selesai |
-| 4 Database | Selesai, migrasi berhasil dijalankan |
-| 5 Mesin status | Selesai |
-| 6 API circles | Selesai, terverifikasi smoke test (daftar, buat, tambah anggota, mulai, otorisasi) |
-| 7 Tagihan | Selesai |
-| 8 Checkout | Selesai, terverifikasi smoke test (token Snap, idempoten, 403 anggota lain, 409 sudah bayar) |
-| 9 Webhook | Selesai, terverifikasi: pembayaran di simulator mengubah order jadi SETTLED lewat webhook dan membuat job outbox |
-| 10 Outbox | Selesai. Dipakai modul chain dari jalur kontrak |
-| 11 Payout | Simulasi selesai dan terverifikasi (`-Both`): ditolak sebelum semua lunas, dana Rp20.000 tanpa biaya admin, payout ganda ditolak, periode 2 dibuka. Iris ditulis dari dokumentasi, belum diuji |
-| 12 Rekonsiliasi | Selesai, terverifikasi tanpa live (issues=0). Mode live belum dicoba |
-| 13 Tes | Selesai dan terverifikasi (2026-11-08): `npm run typecheck` bersih, `npm test` 66 lulus, 0 gagal. Tes unit (signature, uang, hash, mesin status, tagihan) dan tes integrasi dengan database `lingkarpay_test` (checkout, webhook, pencairan, outbox, rekonsiliasi) |
-| 14 Dokumentasi | Selesai: `API.md`, `ERD.md`, `DESIGN.md`, `apps/api/README.md` |
-
-## Yang masih perlu dibuktikan (belum pernah dijalankan)
-Kode ditulis tanpa bisa dikompilasi atau dijalankan di lingkungan pengembangan. Urutan verifikasi: `npm install` → `npm run typecheck` → `docker compose up -d` → `npm run migrate` → uji spike webhook → uji alur penuh (daftar, buat kelompok, mulai, checkout, bayar di simulator, cek `GET /orders/:orderId`).
-
-## Catatan hasil uji spike (2026-11-08)
-- `typecheck` dan `migrate` berhasil di komputer pengembang.
-- Dashboard Midtrans kelompok memisahkan **Server Key** (autentikasi API) dari **Signature Secret Key** (signature notifikasi dan Status API). Server Key terbukti valid untuk Snap dan Status API, tetapi tidak cocok untuk signature.
-- Notification URL sempat tersimpan tanpa path; server menerima notifikasi di `POST /` dan `POST /midtrans-webhook`.
-- Panggilan keluar ke Midtrans dipaksa IPv4 dengan retry (`src/lib/http.ts`) karena Node sempat timeout padahal PowerShell bisa terhubung. Panggilan pertama ke Snap masih bisa lambat (sekitar 11 detik pada satu percobaan).
-
-## Hasil smoke test (2026-11-08, `scripts/smoke.ps1`, tanpa -Both)
-Semua 19 pemeriksaan lolos: health, register/login, buat dan mulai kelompok, checkout idempoten, otorisasi (403), pembayaran di simulator terdeteksi (SETTLED), pembayaran ganda ditolak (409), job chain `queued` di outbox, rekonsiliasi `issues=0`.
-
-Belum pernah dijalankan: mode `-Both` (pembayaran kedua, periode siap cair, payout simulasi, periode 2 dibuka), penalti keterlambatan, order FAILED/EXPIRED, notifikasi duplikat, rekonsiliasi `live=true`, Iris, dan konsumsi outbox oleh modul chain (job masih `queued`).
-
-## Hasil smoke test -Both (2026-11-08)
-Semua 30 pemeriksaan lolos: dua anggota membayar lewat simulator, periode 1 menjadi siap cair, payout simulasi Rp20.000 (iuran saja, tanpa biaya admin), payout ganda ditolak (409), periode 2 dibuka, selisih terkumpul vs dicairkan 0, rekonsiliasi akhir `issues=0`.
-
-Masih belum pernah dijalankan: penalti keterlambatan, order FAILED/EXPIRED, notifikasi duplikat, rekonsiliasi `live=true`, Iris, dan konsumsi outbox oleh modul chain (job `recordPayment` dan `markPayout` masih `queued`).
-
-## Struktur monorepo (2026-11-08)
-`README.md` di root menjelaskan jalur kerja dan struktur. Folder jalur lain sudah disiapkan dengan README berisi batas tanggung jawab dan antarmuka: `apps/web/`, `contracts/`, `apps/api/src/chain/` (modul chain), `docs/business-case/`.
-
-Antarmuka dengan jalur smart contract sudah lengkap: job `createCircle`, `recordPayment`, `markPayout` dan fungsi `claimJobs`, `markCircleCreated`, `markJobConfirmed`, `markJobFailed`, `requeueJob` (lihat `apps/api/src/chain/README.md`). Setelah menarik perubahan ini jalankan `npm run migrate` (migrasi 002); kelompok lama yang sudah dimulai sebelum migrasi tidak punya job `createCircle`, jadi buat kelompok baru untuk uji.
-
-## Hasil tes otomatis (2026-11-08)
-`npm test`: 66 tes, 12 suite, semua lulus (sekitar 11 detik). Mencakup skenario yang sulit diuji manual: notifikasi duplikat dan serentak, notifikasi tidak berurutan (pending setelah settlement, settlement setelah expire), signature palsu atau dihitung dari Server Key, jumlah tidak cocok, dua checkout serentak, order gagal/kedaluwarsa diganti, penalti, outbox (retry, gagal permanen, antre ulang, ANCHORED), dan deteksi anomali rekonsiliasi.
-
-Belum dicakup: Iris asli, rekonsiliasi `live=true`, dan konsumsi outbox oleh modul chain.
-
-## Tambahan (2026-11-08)
-- Outbox `createCircle` + `markCircleCreated` (migrasi 002): terverifikasi. Migrasi terapan, `npm run typecheck` bersih, `npm test` 71 lulus, 0 gagal.
-- `docs/openapi.yaml`, `docs/DEMO.md`, `docs/IRIS.md`.
-- Skrip `smoke-scenarios.ps1` (Expire, Cancel, Ewallet) dan `smoke.ps1 -Iris`: ditulis, belum dijalankan.
-- Skenario e-wallet (`smoke-scenarios.ps1 -Scenario Ewallet`): berhasil di sandbox (GoPay lewat simulator, SETTLED, `paymentType=qris`).
-
-- `POST /orders/:orderId/cancel` dan `/expire`: terverifikasi di sandbox (`smoke-scenarios.ps1 -Scenario Cancel -ApiCancel` dan `-Scenario Expire -ApiExpire`, semua lolos; 87 tes otomatis lulus). Syarat: server key harus punya izin Capability Cancel dan Expire = Write (lihat DEV_LOG).
-
-## Ringkasan skenario pembayaran terverifikasi di Midtrans sandbox (2026-11-08)
-| Skenario | Cara uji | Hasil |
+| Pemeriksaan | Perintah | Hasil |
 |---|---|---|
-| Sukses VA BCA | `smoke.ps1 -Both` | Lolos (30 pemeriksaan), termasuk pencairan simulasi |
-| Sukses e-wallet | `smoke-scenarios.ps1 -Scenario Ewallet` | Lolos (GoPay lewat simulator, `paymentType=qris`) |
+| Tipe | `npm run typecheck` | Bersih |
+| Tes otomatis | `npm test` | 87 lulus |
+| Alur penuh, satu anggota | `scripts\smoke.ps1` | 19 pemeriksaan lolos |
+| Alur penuh, dua anggota + pencairan | `scripts\smoke.ps1 -Both` | 30 pemeriksaan lolos |
+
+Skenario pembayaran di Midtrans sandbox:
+
+| Skenario | Perintah | Hasil |
+|---|---|---|
+| Sukses VA BCA | `smoke.ps1 -Both` | Lolos |
+| Sukses e-wallet | `smoke-scenarios.ps1 -Scenario Ewallet` | Lolos (GoPay lewat simulator; Midtrans melaporkan `payment_type=qris`) |
 | Kedaluwarsa | `smoke-scenarios.ps1 -Scenario Expire -ApiExpire` | Lolos (EXPIRED, order baru bisa dibuat) |
 | Dibatalkan | `smoke-scenarios.ps1 -Scenario Cancel -ApiCancel` | Lolos (FAILED, order baru bisa dibuat) |
-| Duplikat, signature salah, jumlah tidak cocok, tidak berurutan | `npm test` | Lolos (87 tes) |
+| Duplikat, signature palsu, jumlah tidak cocok, tidak berurutan | `npm test` | Lolos |
+
+## Belum dibuktikan atau opsional
+- **Iris (payout sandbox):** butuh akun sandbox Iris dan dua kunci. Simulasi pencairan sudah memenuhi alur tugas.
+- **Rekonsiliasi `live=true`** (cek ke Status API): kodenya ada, belum dicoba.
+- **Konsumsi outbox oleh modul chain:** job `createCircle`, `recordPayment`, `markPayout` berhenti di status `queued` sampai worker dari jalur smart contract ada (kerangka sudah disiapkan).
+- **Penalti keterlambatan di sandbox:** terbukti di tes otomatis, belum pada transaksi sandbox sungguhan (tenggat di smoke test 7 hari).
+
+## Antarmuka dengan jalur lain
+- **Frontend:** `docs/openapi.yaml` dan `docs/API.md`; panduan di `apps/web/README.md`.
+- **Smart contract:** outbox (`apps/api/src/services/outbox.ts`) dengan fungsi `claimJobs`, `markCircleCreated`, `markJobConfirmed`, `markJobFailed`, `requeueJob`; payload di `docs/DESIGN.md` bagian 7. Job pembayaran dan pencairan ditahan sampai kelompoknya on-chain.
+- **Business case:** angka prototipe di `docs/business-case/README.md`.
+- Keputusan bersama yang masih terbuka: apakah `markPayout` di contract menutup periode sendiri, atau worker memanggil `closePeriod` lebih dulu.
+
+## Kerangka untuk jalur lain (belum dikompilasi atau dijalankan)
+`contracts/` (contract inti, tes dasar, deploy), `apps/api/src/chain/worker.example.ts` (worker `viem`), `apps/web/` (Vite + React). Bagian rumit ditandai `TODO(smart-contract)` dan `TODO(frontend)` sebagai pekerjaan jalur masing-masing.
+
+## Catatan teknis yang berdampak
+- **Signature Secret Key.** Signature notifikasi dan Status API dihitung dari Signature Secret Key (`MIDTRANS_SIGNATURE_KEY`), bukan Server Key.
+- **Izin server key.** Snap Checkout, Core API, Cancel transaction, dan Expire transaction harus Write. Tanpa izin Capability, cancel dan expire dijawab `403 Access denied`. Refund tidak diaktifkan.
+- **Notification URL.** Alamat tunnel Cloudflared berubah tiap restart; perbarui di dashboard Midtrans. Server menerima notifikasi di `/midtrans-webhook` dan `POST /`.
+- **Zod 4.** Nilai bawaan boolean di `.env` dipasang sebelum konversi (lihat `src/config.schema.ts` dan tesnya).
+- **Reload `.env`.** `tsx watch` tidak memuat ulang saat `.env` berubah; restart `npm run dev`. Log start menampilkan sidik jari key untuk memastikan yang termuat.
