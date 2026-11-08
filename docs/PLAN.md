@@ -56,7 +56,7 @@ Kode langkah 0-12 dan dokumentasi (14) sudah ditulis dan di-commit. Tes otomatis
 | 8 Checkout | Selesai, terverifikasi smoke test (token Snap, idempoten, 403 anggota lain, 409 sudah bayar) |
 | 9 Webhook | Selesai, terverifikasi: pembayaran di simulator mengubah order jadi SETTLED lewat webhook dan membuat job outbox |
 | 10 Outbox | Selesai. Dipakai modul chain dari jalur kontrak |
-| 11 Payout | Simulasi selesai. Iris ditulis dari dokumentasi, belum diuji |
+| 11 Payout | Simulasi selesai dan terverifikasi (`-Both`): ditolak sebelum semua lunas, dana Rp20.000 tanpa biaya admin, payout ganda ditolak, periode 2 dibuka. Iris ditulis dari dokumentasi, belum diuji |
 | 12 Rekonsiliasi | Selesai, terverifikasi tanpa live (issues=0). Mode live belum dicoba |
 | 13 Tes | Ditunda |
 | 14 Dokumentasi | Selesai: `API.md`, `ERD.md`, `DESIGN.md`, `apps/api/README.md` |
@@ -74,3 +74,8 @@ Kode ditulis tanpa bisa dikompilasi atau dijalankan di lingkungan pengembangan. 
 Semua 19 pemeriksaan lolos: health, register/login, buat dan mulai kelompok, checkout idempoten, otorisasi (403), pembayaran di simulator terdeteksi (SETTLED), pembayaran ganda ditolak (409), job chain `queued` di outbox, rekonsiliasi `issues=0`.
 
 Belum pernah dijalankan: mode `-Both` (pembayaran kedua, periode siap cair, payout simulasi, periode 2 dibuka), penalti keterlambatan, order FAILED/EXPIRED, notifikasi duplikat, rekonsiliasi `live=true`, Iris, dan konsumsi outbox oleh modul chain (job masih `queued`).
+
+## Hasil smoke test -Both (2026-11-08)
+Semua 30 pemeriksaan lolos: dua anggota membayar lewat simulator, periode 1 menjadi siap cair, payout simulasi Rp20.000 (iuran saja, tanpa biaya admin), payout ganda ditolak (409), periode 2 dibuka, selisih terkumpul vs dicairkan 0, rekonsiliasi akhir `issues=0`.
+
+Masih belum pernah dijalankan: penalti keterlambatan, order FAILED/EXPIRED, notifikasi duplikat, rekonsiliasi `live=true`, Iris, dan konsumsi outbox oleh modul chain (job `recordPayment` dan `markPayout` masih `queued`).
