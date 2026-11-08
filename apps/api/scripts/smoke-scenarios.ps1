@@ -133,7 +133,8 @@ if ($Scenario -eq "Ewallet") {
     Check "pembayaran e-wallet terdeteksi" $false "timeout $TimeoutMinutes menit"
   } else {
     Check "pembayaran e-wallet terdeteksi" ($PaidStatuses -contains $o.status) "status=$($o.status)"
-    Check "jenis pembayaran e-wallet" (@("gopay", "shopeepay") -contains $o.paymentType) "paymentType=$($o.paymentType)"
+    # GoPay lewat kode QR dilaporkan Midtrans sebagai payment_type "qris" (bukan "gopay").
+    Check "jenis pembayaran e-wallet (gopay/shopeepay/qris dari GoPay)" (@("gopay", "shopeepay", "qris") -contains $o.paymentType) "paymentType=$($o.paymentType)"
   }
 }
 

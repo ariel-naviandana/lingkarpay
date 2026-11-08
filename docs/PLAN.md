@@ -94,3 +94,4 @@ Belum dicakup: Iris asli, rekonsiliasi `live=true`, dan konsumsi outbox oleh mod
 - Outbox `createCircle` + `markCircleCreated` (migrasi 002): terverifikasi. Migrasi terapan, `npm run typecheck` bersih, `npm test` 71 lulus, 0 gagal.
 - `docs/openapi.yaml`, `docs/DEMO.md`, `docs/IRIS.md`.
 - Skrip `smoke-scenarios.ps1` (Expire, Cancel, Ewallet) dan `smoke.ps1 -Iris`: ditulis, belum dijalankan.
+- Skenario e-wallet (`smoke-scenarios.ps1 -Scenario Ewallet`): berhasil di sandbox (GoPay lewat simulator, SETTLED, `paymentType=qris`). Skenario Cancel dan Expire belum dijalankan.
