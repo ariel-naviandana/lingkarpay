@@ -72,6 +72,35 @@ async function findActiveOrder(memberId: number, periodId: number): Promise<Orde
   return rows[0] ?? null;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Menunggu order PENDING mendapat token (order sedang dibuat oleh permintaan lain). */
+async function waitForToken(orderPk: number, timeoutMs: number): Promise<OrderRow | null> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const { rows } = await pool.query<OrderRow>(
+      `SELECT ${ORDER_COLUMNS} FROM orders WHERE id = $1`,
+      [orderPk],
+    );
+    const row = rows[0] ?? null;
+    if (!row || row.snap_token || row.status !== "PENDING" || Date.now() >= deadline) return row;
+    await sleep(200);
+  }
+}
+
+/**
+ * Order aktif milik anggota di periode ini. Bila masih PENDING tanpa token, berarti permintaan
+ * lain sedang membuatnya: tunggu, jangan ditutup (menutupnya akan membuat pembayaran sah ditolak).
+ */
+async function resolveExisting(memberId: number, periodId: number): Promise<OrderRow | null> {
+  const found = await findActiveOrder(memberId, periodId);
+  if (found && found.status === "PENDING" && !found.snap_token) {
+    const waited = await waitForToken(found.id, 10_000);
+    return waited && ACTIVE_STATUSES.includes(waited.status) ? waited : null;
+  }
+  return found;
+}
+
 async function loadContext(circleId: number, periodId: number, memberId: number) {
   const { rows } = await pool.query<CheckoutContext>(
     `SELECT m.id AS member_id, m.user_id, u.name AS user_name, u.email AS user_email,
@@ -111,7 +140,7 @@ export async function createCheckout(
     throw conflict("PERIOD_NOT_OPEN", "Periode ini tidak sedang menerima iuran");
   }
 
-  const existing = await findActiveOrder(ctx.member_id, ctx.period_id);
+  const existing = await resolveExisting(ctx.member_id, ctx.period_id);
   if (existing) {
     if (isPaid(existing.status)) {
       throw conflict("ALREADY_PAID", "Iuran periode ini sudah dibayar");
@@ -177,7 +206,10 @@ export async function createCheckout(
     // Dua checkout serentak: yang kalah mengembalikan order yang menang.
     if (isUniqueViolation(err)) {
       const winner = await findActiveOrder(ctx.member_id, ctx.period_id);
-      if (winner) return toResult(winner, true);
+      if (winner) {
+        const ready = winner.snap_token ? winner : ((await waitForToken(winner.id, 10_000)) ?? winner);
+        return toResult(ready, true);
+      }
     }
     throw err;
   }

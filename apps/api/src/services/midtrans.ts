@@ -37,9 +37,12 @@ export interface SnapParams {
   enabledPayments?: string[];
 }
 
+/** Klien HTTP ke Midtrans. Dapat diganti di tes agar tidak ada panggilan jaringan sungguhan. */
+export const gatewayHttp: { request: typeof requestJson } = { request: requestJson };
+
 async function call(url: string, method: "GET" | "POST", body?: unknown): Promise<HttpResult> {
   try {
-    return await requestJson(url, {
+    return await gatewayHttp.request(url, {
       method,
       body,
       headers: {
