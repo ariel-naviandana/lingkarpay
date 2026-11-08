@@ -40,10 +40,13 @@ export interface SnapParams {
 async function gatewayFetch(url: string, init: RequestInit): Promise<Response> {
   try {
     return await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
-  } catch {
+  } catch (err) {
+    // Sertakan host dan kode jaringan (mis. ETIMEDOUT, ENOTFOUND) agar penyebabnya terlihat.
+    const code =
+      (err as { cause?: { code?: string } }).cause?.code ?? (err as Error).name ?? "unknown";
     throw new AppError(
       "GATEWAY_UNREACHABLE",
-      "Tidak dapat menghubungi Midtrans",
+      `Tidak dapat menghubungi ${new URL(url).host} (${code})`,
       502,
     );
   }
@@ -96,6 +99,14 @@ export async function getTransactionStatus(orderId: string): Promise<GatewayStat
     `${API_URL}/${encodeURIComponent(orderId)}/status`,
     { headers: { Accept: "application/json", Authorization: authHeader() } },
   );
+  if (res.status === 401) {
+    // Server Key ditolak. Jangan dianggap "order tidak ditemukan".
+    throw new AppError(
+      "GATEWAY_AUTH_FAILED",
+      "Server Key ditolak Midtrans (401). Periksa MIDTRANS_SERVER_KEY di .env",
+      502,
+    );
+  }
   const data = (await res.json().catch(() => ({}))) as Record<string, any>;
   const found = res.ok && String(data.status_code) !== "404";
   return {
