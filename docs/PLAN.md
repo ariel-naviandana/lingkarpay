@@ -83,7 +83,7 @@ Masih belum pernah dijalankan: penalti keterlambatan, order FAILED/EXPIRED, noti
 ## Struktur monorepo (2026-11-08)
 `README.md` di root menjelaskan jalur kerja dan struktur. Folder jalur lain sudah disiapkan dengan README berisi batas tanggung jawab dan antarmuka: `apps/web/`, `contracts/`, `apps/api/src/chain/` (modul chain), `docs/business-case/`.
 
-Antarmuka yang masih terbuka dengan jalur smart contract: backend belum membuat job `createCircle`/`startCircle`; worker chain menyinkronkan kelompok sendiri lewat query (lihat `apps/api/src/chain/README.md`). Putuskan bersama apakah cukup begitu atau perlu job outbox tambahan.
+Antarmuka dengan jalur smart contract sudah lengkap: job `createCircle`, `recordPayment`, `markPayout` dan fungsi `claimJobs`, `markCircleCreated`, `markJobConfirmed`, `markJobFailed`, `requeueJob` (lihat `apps/api/src/chain/README.md`). Setelah menarik perubahan ini jalankan `npm run migrate` (migrasi 002); kelompok lama yang sudah dimulai sebelum migrasi tidak punya job `createCircle`, jadi buat kelompok baru untuk uji.
 
 ## Hasil tes otomatis (2026-11-08)
 `npm test`: 66 tes, 12 suite, semua lulus (sekitar 11 detik). Mencakup skenario yang sulit diuji manual: notifikasi duplikat dan serentak, notifikasi tidak berurutan (pending setelah settlement, settlement setelah expire), signature palsu atau dihitung dari Server Key, jumlah tidak cocok, dua checkout serentak, order gagal/kedaluwarsa diganti, penalti, outbox (retry, gagal permanen, antre ulang, ANCHORED), dan deteksi anomali rekonsiliasi.

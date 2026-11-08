@@ -15,6 +15,7 @@ erDiagram
   members ||--o{ payouts : menerima
   orders ||--o{ order_status_history : riwayat
   orders ||--o| chain_jobs : recordPayment
+  circles ||--o| chain_jobs : createCircle
   payouts ||--o| chain_jobs : markPayout
   chain_jobs ||--o{ chain_transactions : percobaan_tx
   orders ||..o{ webhook_events : order_id_dari_payload
@@ -99,7 +100,8 @@ erDiagram
   }
   chain_jobs {
     int id PK
-    text kind "recordPayment|markPayout"
+    text kind "createCircle|recordPayment|markPayout"
+    int circle_id FK
     int order_id FK
     int payout_id FK
     jsonb payload
@@ -118,6 +120,6 @@ erDiagram
 ## Aturan integritas penting
 - `orders.gross_amount = amount + penalty_amount + admin_fee` (CHECK).
 - Satu iuran aktif per anggota per periode: indeks unik parsial pada `orders (member_id, period_id)` untuk status PENDING/SETTLED/SETTLED_PENDING_CHAIN/ANCHORED. Order FAILED/EXPIRED boleh digantikan.
-- Satu job per order dan per payout: indeks unik parsial `chain_jobs (kind, order_id)` dan `(kind, payout_id)`.
+- Satu job per kelompok, order, dan payout: indeks unik parsial `chain_jobs (kind, circle_id)`, `(kind, order_id)`, dan `(kind, payout_id)`.
 - Uang selalu BIGINT rupiah.
 - Data on-chain hanya `member_ref` dan hash (tanpa nama, email, atau nomor rekening).

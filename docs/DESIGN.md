@@ -64,25 +64,37 @@ Format error seragam: `{ "error": { "code": "...", "message": "..." } }`.
 - Outbox: satu order SETTLED = satu job `recordPayment`; satu payout = satu job `markPayout`.
 
 ## 7. Antarmuka ke jalur smart contract (outbox)
-Modul chain TypeScript memakai fungsi di `src/services/outbox.ts` (satu proses/repo, tanpa HTTP):
+Modul chain TypeScript memakai fungsi di `src/services/outbox.ts` (satu proses/repo, tanpa HTTP). Ada tiga jenis job:
+
+| Job (`kind`) | Dibuat saat | Dicatat ke contract sebagai |
+|---|---|---|
+| `createCircle` | Kelompok dimulai (`POST /circles/:id/start`) | `createCircle` + `addMember` (urutan giliran) + `startCircle` |
+| `recordPayment` | Order menjadi SETTLED | `recordPayment` |
+| `markPayout` | Payout dibuat | `markPayout` |
 
 | Fungsi | Kapan |
 |---|---|
-| `claimJobs(limit)` | Ambil job `queued` yang siap (aman paralel; job `sent` macet > 5 menit diambil ulang). Menaikkan `attempts`. |
-| `markJobConfirmed(jobId, txHash)` | Tx terkonfirmasi. Order `recordPayment` → ANCHORED. Idempoten. |
+| `claimJobs(limit)` | Ambil job `queued` yang siap (aman paralel; job `sent` macet > 5 menit diambil ulang). Menaikkan `attempts`. `createCircle` didahulukan; `recordPayment`/`markPayout` hanya diberikan bila kelompoknya sudah on-chain, dan `payload.circleChainId` diisi nilai terbaru. |
+| `markCircleCreated(jobId, chainCircleId, txHash)` | Kelompok sudah dibuat di chain. Menyimpan `circles.chain_circle_id` (membuka job pembayaran kelompok itu). Idempoten. |
+| `markJobConfirmed(jobId, txHash)` | Tx `recordPayment`/`markPayout` terkonfirmasi. Order `recordPayment` → ANCHORED. Idempoten. Menolak job `createCircle`. |
 | `markJobFailed(jobId, error)` | Gagal kirim. Diulang dengan backoff sampai 5 kali; order → SETTLED_PENDING_CHAIN. |
 | `requeueJob(jobId)` | Operator mengantrekan ulang job yang sudah `failed`. |
 
 Payload job (tanpa data pribadi):
 ```json
+// createCircle
+{ "circleId": 1, "contributionAmount": 100000, "memberCount": 3, "periodDays": 7, "penaltyPct": 5,
+  "members": [ { "memberRef": "m_ab12cd34", "turnOrder": 1 }, { "memberRef": "m_ef56ab78", "turnOrder": 2 } ] }
 // recordPayment
-{ "circleId": 1, "circleChainId": null, "periodNo": 1, "memberRef": "m_ab12cd34",
+{ "circleId": 1, "circleChainId": "42", "periodNo": 1, "memberRef": "m_ab12cd34",
   "refHash": "0x…", "paidAt": 1700000000 }
 // markPayout
-{ "circleId": 1, "circleChainId": null, "periodNo": 1, "recipientMemberRef": "m_ab12cd34",
+{ "circleId": 1, "circleChainId": "42", "periodNo": 1, "recipientMemberRef": "m_ab12cd34",
   "payoutRefHash": "0x…", "recipientAccountHash": null, "amount": 300000 }
 ```
-`refHash` = Keccak-256 dari `lingkarpay:v1:{order_id}:{gateway_ref}:{gross_amount}` (bukan data pribadi). `circleChainId` diisi jalur kontrak ke `circles.chain_circle_id` setelah `createCircle`/`startCircle` di chain; sampai saat itu bernilai null.
+`refHash` = Keccak-256 dari `lingkarpay:v1:{order_id}:{gateway_ref}:{gross_amount}` (bukan data pribadi). `circleChainId` adalah id kelompok di chain (string); bernilai `null` di job yang belum diambil dan selalu terisi pada job yang dikembalikan `claimJobs`.
+
+Jaminan urutan: kelompok dibuat di chain lebih dulu; pembayaran yang masuk sebelum itu tetap SETTLED dan menunggu di antrean tanpa menghabiskan percobaan.
 
 ## 8. Pencairan (payout)
 - Simulasi (bawaan): hanya operator (pembuat kelompok), hanya saat periode `ready_payout`. Dana = iuran + penalti terkumpul (tanpa biaya admin). Mencatat `payouts`, mengantrekan `markPayout`, menandai periode `done`, membuka periode berikutnya (atau menutup kelompok).
@@ -97,3 +109,4 @@ Payload job (tanpa data pribadi):
 ## Riwayat
 - 2026-11-08: draf awal.
 - 2026-11-08: disesuaikan dengan implementasi: tabel `users` memakai `email`/`password_hash` plus `sessions`; `circles.member_count`; `chain_jobs.kind` (recordPayment/markPayout) dan `chain_transactions.job_id`; `orders.expires_at`; indeks unik parsial; `idempotency_key` berformat `circle:period:member#percobaan`; endpoint tambahan (`/circles/:id/start`, `/payouts/iris`, `/public-config`, `/orders/:orderId`); antarmuka outbox berupa fungsi.
+- 2026-11-08: outbox ditambah job `createCircle` dan fungsi `markCircleCreated` (migrasi 002, kolom `chain_jobs.circle_id`). `claimJobs` menahan job pembayaran/pencairan sampai kelompoknya on-chain dan mengisi `payload.circleChainId`. Rekonsiliasi memuat `chain` (status kelompok di chain).

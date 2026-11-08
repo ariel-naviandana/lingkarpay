@@ -24,6 +24,9 @@ Pop-up Snap muncul, VA BCA dibayar lewat simulator, status sukses. Server Fastif
 - Saat merancang tes ditemukan race condition di checkout: permintaan kedua bisa menutup order yang belum sempat mendapat token. Diperbaiki dengan menunggu token.
 - Smoke test alur penuh (dua anggota, pencairan simulasi) lolos 30 pemeriksaan.
 
+## 2026-11-08 — Payment gateway x Smart contract: antarmuka kelompok on-chain
+Keputusan: kelompok yang dimulai menghasilkan job outbox `createCircle`; modul chain mengonfirmasinya dengan `markCircleCreated` (menyimpan id on-chain). Job pembayaran dan pencairan kelompok itu ditahan `claimJobs` sampai kelompok on-chain. Alasan: worker chain tidak perlu menulis query sinkronisasi sendiri, dan pembayaran yang masuk lebih dulu tidak menghabiskan percobaan ulang. Dampak: jalur smart contract cukup memakai fungsi `claimJobs`, `markCircleCreated`, `markJobConfirmed`, `markJobFailed`.
+
 ## Template entri
 ```
 ## YYYY-MM-DD — <jalur>

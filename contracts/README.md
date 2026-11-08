@@ -14,11 +14,15 @@ Parameter terkunci setelah `startCircle`; penerima ditentukan jadwal (bukan oper
 ## Data yang dikirim backend (antarmuka outbox)
 Dari `chain_jobs.payload` (lihat `docs/DESIGN.md` bagian 7). Tanpa data pribadi.
 ```
-recordPayment:  circleId, circleChainId|null, periodNo, memberRef ("m_xxxxxxxx"),
+createCircle:   circleId, contributionAmount, memberCount, periodDays, penaltyPct,
+                members[ { memberRef ("m_xxxxxxxx"), turnOrder } ]  (urutan giliran terkunci)
+recordPayment:  circleId, circleChainId, periodNo, memberRef,
                 refHash (bytes32, Keccak-256), paidAt (detik UNIX)
-markPayout:     circleId, circleChainId|null, periodNo, recipientMemberRef,
+markPayout:     circleId, circleChainId, periodNo, recipientMemberRef,
                 payoutRefHash (bytes32), recipientAccountHash (bytes32|null), amount (rupiah bulat)
 ```
+Satu job `createCircle` memetakan ke `createCircle` + `addMember` + `startCircle`. Id kelompok yang dikembalikan chain dilaporkan ke backend lewat `markCircleCreated` agar job pembayaran kelompok itu dibuka.
+
 Rancang tipe contract agar cocok: `memberRef` sebagai `bytes32`/`string`, `refHash` sebagai `bytes32`, nominal rupiah sebagai `uint256`. Jangan menyimpan nama, email, atau nomor rekening on-chain.
 
 ## Hasil deploy

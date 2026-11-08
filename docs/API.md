@@ -69,7 +69,7 @@ Dana pencairan = iuran + penalti terkumpul; biaya admin tidak ikut.
 
 ## Rekonsiliasi
 `GET /reports/reconciliation?circleId=1&live=true` — hanya pembuat kelompok. `live=true` menambah pemeriksaan ke Status API (maks. 50 order terbaru).
-Memuat `summary` (jumlah per status, `grossPaid`, `adminFeeRevenue`, `collectedForPayout`, `payoutTotal`, `webhookEventsByOutcome`, `issues`), `periods` (terkumpul vs dicairkan, `difference` harus 0), dan `orders` dengan `flags`:
+Memuat `summary` (jumlah per status, `grossPaid`, `adminFeeRevenue`, `collectedForPayout`, `payoutTotal`, `webhookEventsByOutcome`, `issues`), `periods` (terkumpul vs dicairkan, `difference` harus 0), `chain` (`chainCircleId` dan status job `createCircle`), dan `orders` dengan `flags`:
 
 | Flag | Arti |
 |---|---|
@@ -83,3 +83,4 @@ Memuat `summary` (jumlah per status, `grossPaid`, `adminFeeRevenue`, `collectedF
 
 ## Lainnya
 `GET /health` → `{ ok: true }`. Pada `DEV_TOOLS=true`: `GET /` (halaman tes Snap) dan `POST /dev/checkout` (transaksi tes tanpa database, order_id `TEST-...`).
+`circle.chainCircleId` pada detail kelompok bernilai `null` sampai kelompok dicatat di chain (job `createCircle` selesai).
