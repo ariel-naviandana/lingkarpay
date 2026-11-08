@@ -20,3 +20,13 @@ coverage/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Smart contract (Hardhat)
+artifacts/
+cache/
+typechain-types/
+contracts/ignition/deployments/chain-31337/
+
+# Kunci
+*.pem
+*.key
