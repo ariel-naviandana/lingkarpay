@@ -2,7 +2,7 @@ import type { FastifyBaseLogger } from "fastify";
 import { config } from "../config.js";
 import { pool, withTx } from "../db/pool.js";
 import { sha256Hex } from "../lib/hash.js";
-import { verifySignature } from "../lib/signature.js";
+import { computeSignature, verifySignature } from "../lib/signature.js";
 import { applyGatewayStatus } from "./gatewayStatus.js";
 
 export interface NotificationResult {
@@ -44,6 +44,35 @@ export async function handleNotification(
       [orderId, sha256Hex("invalid|" + JSON.stringify(body)), str(body.transaction_status), payloadJson],
     );
     log.warn({ order_id: orderId }, "webhook ditolak: signature tidak cocok");
+    if (config.DEV_TOOLS) {
+      // Diagnostik pengembangan. Tidak pernah mencetak Server Key, hanya sifat-sifatnya.
+      const key = config.MIDTRANS_SERVER_KEY;
+      const gross = String(body.gross_amount);
+      const variants: Record<string, string> = {
+        as_received: gross,
+        without_decimals: gross.replace(/\.0+$/, ""),
+        two_decimals: Number(gross).toFixed(2),
+      };
+      const matched = Object.entries(variants)
+        .filter(([, g]) => computeSignature(orderId, String(body.status_code), g, key) === body.signature_key)
+        .map(([name]) => name);
+      log.warn(
+        {
+          body_keys: Object.keys(body),
+          status_code: body.status_code,
+          status_code_type: typeof body.status_code,
+          gross_amount: body.gross_amount,
+          gross_amount_type: typeof body.gross_amount,
+          signature_type: typeof body.signature_key,
+          signature_length: typeof body.signature_key === "string" ? body.signature_key.length : null,
+          server_key_length: key.length,
+          server_key_has_whitespace: /\s/.test(key),
+          server_key_looks_like_midtrans: /^(SB-)?Mid-server-/.test(key),
+          matched_gross_variants: matched,
+        },
+        "diagnostik signature (DEV_TOOLS)",
+      );
+    }
     return { httpStatus: 401, outcome: "invalid_signature" };
   }
 
