@@ -1,6 +1,6 @@
 # src/chain — modul chain (jalur smart contract)
 
-Belum dimulai. Folder ini milik jalur smart contract. Modul ini adalah worker TypeScript yang membaca outbox backend dan mencatatnya ke contract di Sepolia. Berjalan dalam proyek `apps/api` agar bisa memakai langsung fungsi dan koneksi database yang sudah ada.
+Folder ini milik jalur smart contract. Kerangka awal sudah disiapkan (lihat bagian "Kerangka awal" di bawah). Modul ini adalah worker TypeScript yang membaca outbox backend dan mencatatnya ke contract di Sepolia. Berjalan dalam proyek `apps/api` agar bisa memakai langsung fungsi dan koneksi database yang sudah ada.
 
 ## Antarmuka (sudah ada, jangan diubah tanpa sepakat)
 Fungsi di `../services/outbox.ts`:

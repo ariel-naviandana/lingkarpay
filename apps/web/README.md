@@ -1,6 +1,6 @@
 # apps/web — jalur frontend
 
-Belum dimulai. Folder ini milik jalur frontend. Disarankan Vite + React + TypeScript, `viem` untuk membaca contract.
+Folder ini milik jalur frontend. Kerangka awal sudah disiapkan (lihat bagian "Kerangka awal" di bawah). Disarankan Vite + React + TypeScript, `viem` untuk membaca contract.
 
 ## Halaman yang dibutuhkan
 Login/daftar, dashboard kelompok, buat kelompok dan undang anggota, detail kelompok (status periode, siapa sudah bayar, giliran, penalti), halaman bayar iuran (Snap), riwayat pembayaran dan status pencairan, portal verifikasi publik (baca dari contract), opsional halaman operator (rekonsiliasi).

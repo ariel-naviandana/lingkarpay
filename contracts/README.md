@@ -1,6 +1,6 @@
 # contracts — jalur smart contract
 
-Belum dimulai. Folder ini milik jalur smart contract. Disarankan Hardhat 3 + Solidity + `viem`, jaringan Ethereum Sepolia (ETH uji saja).
+Folder ini milik jalur smart contract. Kerangka awal sudah disiapkan (lihat bagian "Kerangka awal" di bawah). Disarankan Hardhat 3 + Solidity + `viem`, jaringan Ethereum Sepolia (ETH uji saja).
 
 ## Tugas
 Contract LingkarPay, tes unit, deploy ke Sepolia, simpan alamat dan ABI, dokumentasi fungsi. Modul chain (worker TypeScript) ada di `apps/api/src/chain/` (lihat README di sana).
