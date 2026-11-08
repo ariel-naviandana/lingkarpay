@@ -58,7 +58,7 @@ Kode langkah 0-12 dan dokumentasi (14) sudah ditulis dan di-commit. Tes otomatis
 | 10 Outbox | Selesai. Dipakai modul chain dari jalur kontrak |
 | 11 Payout | Simulasi selesai dan terverifikasi (`-Both`): ditolak sebelum semua lunas, dana Rp20.000 tanpa biaya admin, payout ganda ditolak, periode 2 dibuka. Iris ditulis dari dokumentasi, belum diuji |
 | 12 Rekonsiliasi | Selesai, terverifikasi tanpa live (issues=0). Mode live belum dicoba |
-| 13 Tes | Ditulis, belum dijalankan: tes unit (signature, uang, hash, mesin status, tagihan) dan tes integrasi dengan database `lingkarpay_test` (checkout, webhook, pencairan, outbox, rekonsiliasi). Jalankan `npm test` |
+| 13 Tes | Selesai dan terverifikasi (2026-11-08): `npm run typecheck` bersih, `npm test` 66 lulus, 0 gagal. Tes unit (signature, uang, hash, mesin status, tagihan) dan tes integrasi dengan database `lingkarpay_test` (checkout, webhook, pencairan, outbox, rekonsiliasi) |
 | 14 Dokumentasi | Selesai: `API.md`, `ERD.md`, `DESIGN.md`, `apps/api/README.md` |
 
 ## Yang masih perlu dibuktikan (belum pernah dijalankan)
@@ -84,3 +84,8 @@ Masih belum pernah dijalankan: penalti keterlambatan, order FAILED/EXPIRED, noti
 `README.md` di root menjelaskan jalur kerja dan struktur. Folder jalur lain sudah disiapkan dengan README berisi batas tanggung jawab dan antarmuka: `apps/web/`, `contracts/`, `apps/api/src/chain/` (modul chain), `docs/business-case/`.
 
 Antarmuka yang masih terbuka dengan jalur smart contract: backend belum membuat job `createCircle`/`startCircle`; worker chain menyinkronkan kelompok sendiri lewat query (lihat `apps/api/src/chain/README.md`). Putuskan bersama apakah cukup begitu atau perlu job outbox tambahan.
+
+## Hasil tes otomatis (2026-11-08)
+`npm test`: 66 tes, 12 suite, semua lulus (sekitar 11 detik). Mencakup skenario yang sulit diuji manual: notifikasi duplikat dan serentak, notifikasi tidak berurutan (pending setelah settlement, settlement setelah expire), signature palsu atau dihitung dari Server Key, jumlah tidak cocok, dua checkout serentak, order gagal/kedaluwarsa diganti, penalti, outbox (retry, gagal permanen, antre ulang, ANCHORED), dan deteksi anomali rekonsiliasi.
+
+Belum dicakup: Iris asli, rekonsiliasi `live=true`, dan konsumsi outbox oleh modul chain.

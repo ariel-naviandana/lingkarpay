@@ -16,7 +16,7 @@ import { reportRoutes } from "./routes/reports.js";
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
-      level: "info",
+      level: config.NODE_ENV === "test" ? "silent" : "info",
       // Jangan pernah mencatat header otorisasi.
       redact: ["req.headers.authorization"],
     },
