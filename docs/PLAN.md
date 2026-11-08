@@ -91,6 +91,6 @@ Antarmuka dengan jalur smart contract sudah lengkap: job `createCircle`, `record
 Belum dicakup: Iris asli, rekonsiliasi `live=true`, dan konsumsi outbox oleh modul chain.
 
 ## Tambahan (2026-11-08)
-- Outbox `createCircle` + `markCircleCreated` (migrasi 002); tes integrasi ditambah (belum dijalankan setelah penambahan ini).
+- Outbox `createCircle` + `markCircleCreated` (migrasi 002): terverifikasi. Migrasi terapan, `npm run typecheck` bersih, `npm test` 71 lulus, 0 gagal.
 - `docs/openapi.yaml`, `docs/DEMO.md`, `docs/IRIS.md`.
 - Skrip `smoke-scenarios.ps1` (Expire, Cancel, Ewallet) dan `smoke.ps1 -Iris`: ditulis, belum dijalankan.
