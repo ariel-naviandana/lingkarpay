@@ -49,15 +49,15 @@ Kode langkah 0-12 dan dokumentasi (14) sudah ditulis dan di-commit. Tes otomatis
 | 0, 1 | Selesai |
 | 2 Spike webhook | Selesai dan terverifikasi (2026-11-08): webhook pending dan settlement masuk lewat tunnel, signature valid, status pengiriman Completed. Signature dihitung dari Signature Secret Key (`MIDTRANS_SIGNATURE_KEY`), bukan Server Key |
 | 3 Struktur | Selesai |
-| 4 Database | Selesai (belum dijalankan) |
+| 4 Database | Selesai, migrasi berhasil dijalankan |
 | 5 Mesin status | Selesai |
-| 6 API circles | Selesai (belum dijalankan) |
+| 6 API circles | Selesai, terverifikasi smoke test (daftar, buat, tambah anggota, mulai, otorisasi) |
 | 7 Tagihan | Selesai |
-| 8 Checkout | Selesai (belum diuji ke Midtrans) |
-| 9 Webhook | Selesai (belum diuji ke Midtrans) |
+| 8 Checkout | Selesai, terverifikasi smoke test (token Snap, idempoten, 403 anggota lain, 409 sudah bayar) |
+| 9 Webhook | Selesai, terverifikasi: pembayaran di simulator mengubah order jadi SETTLED lewat webhook dan membuat job outbox |
 | 10 Outbox | Selesai. Dipakai modul chain dari jalur kontrak |
 | 11 Payout | Simulasi selesai. Iris ditulis dari dokumentasi, belum diuji |
-| 12 Rekonsiliasi | Selesai (belum dijalankan) |
+| 12 Rekonsiliasi | Selesai, terverifikasi tanpa live (issues=0). Mode live belum dicoba |
 | 13 Tes | Ditunda |
 | 14 Dokumentasi | Selesai: `API.md`, `ERD.md`, `DESIGN.md`, `apps/api/README.md` |
 
@@ -69,3 +69,8 @@ Kode ditulis tanpa bisa dikompilasi atau dijalankan di lingkungan pengembangan. 
 - Dashboard Midtrans kelompok memisahkan **Server Key** (autentikasi API) dari **Signature Secret Key** (signature notifikasi dan Status API). Server Key terbukti valid untuk Snap dan Status API, tetapi tidak cocok untuk signature.
 - Notification URL sempat tersimpan tanpa path; server menerima notifikasi di `POST /` dan `POST /midtrans-webhook`.
 - Panggilan keluar ke Midtrans dipaksa IPv4 dengan retry (`src/lib/http.ts`) karena Node sempat timeout padahal PowerShell bisa terhubung. Panggilan pertama ke Snap masih bisa lambat (sekitar 11 detik pada satu percobaan).
+
+## Hasil smoke test (2026-11-08, `scripts/smoke.ps1`, tanpa -Both)
+Semua 19 pemeriksaan lolos: health, register/login, buat dan mulai kelompok, checkout idempoten, otorisasi (403), pembayaran di simulator terdeteksi (SETTLED), pembayaran ganda ditolak (409), job chain `queued` di outbox, rekonsiliasi `issues=0`.
+
+Belum pernah dijalankan: mode `-Both` (pembayaran kedua, periode siap cair, payout simulasi, periode 2 dibuka), penalti keterlambatan, order FAILED/EXPIRED, notifikasi duplikat, rekonsiliasi `live=true`, Iris, dan konsumsi outbox oleh modul chain (job masih `queued`).
