@@ -2,6 +2,7 @@ import { pool, withTx, isUniqueViolation, type Db } from "../db/pool.js";
 import { AppError, conflict, forbidden, notFound } from "../lib/errors.js";
 import { randomHex } from "../lib/hash.js";
 import { computePenalty } from "./billing.js";
+import { enqueueCreateCircle } from "./outbox.js";
 
 interface CircleRow {
   id: number;
@@ -271,6 +272,8 @@ export async function startCircle(userId: number, circleId: number, order?: numb
       "UPDATE circles SET status = 'active', started_at = $2 WHERE id = $1",
       [circleId, startedAt],
     );
+    // Catat kelompok ke chain (urutan giliran sudah terkunci). Job pembayaran menunggu job ini.
+    await enqueueCreateCircle(client, circleId);
     return getCircleSummaryAfterStart(client, circleId);
   });
 }

@@ -34,8 +34,8 @@ interface OrderLine {
  * live=true menambah pemeriksaan ke Status API Midtrans (maksimal 50 order terbaru).
  */
 export async function reconcileCircle(user: AuthUser, circleId: number, live: boolean) {
-  const circle = await pool.query<{ created_by: number; name: string }>(
-    "SELECT created_by, name FROM circles WHERE id = $1",
+  const circle = await pool.query<{ created_by: number; name: string; chain_circle_id: string | null }>(
+    "SELECT created_by, name, chain_circle_id FROM circles WHERE id = $1",
     [circleId],
   );
   if (!circle.rows[0]) throw notFound("Kelompok");
@@ -164,8 +164,17 @@ export async function reconcileCircle(user: AuthUser, circleId: number, live: bo
     )
   ).rows;
 
+  const createJob = (
+    await pool.query<{ status: string; attempts: number; last_error: string | null }>(
+      `SELECT status, attempts, last_error FROM chain_jobs
+        WHERE kind = 'createCircle' AND circle_id = $1`,
+      [circleId],
+    )
+  ).rows[0];
+
   const issueOrders = orders.filter((o) => o.flags.some((f) => !INFO_FLAGS.has(f))).length;
   const periodIssues = periods.filter((p) => p.difference !== null && p.difference !== 0).length;
+  const circleIssue = createJob?.status === "failed" ? 1 : 0;
 
   return {
     circleId,
@@ -179,8 +188,14 @@ export async function reconcileCircle(user: AuthUser, circleId: number, live: bo
       collectedForPayout: paid.reduce((s, o) => s + o.amount + o.penalty_amount, 0),
       payoutTotal: payouts.reduce((s, p) => s + p.amount, 0),
       webhookEventsByOutcome: Object.fromEntries(events.map((e) => [e.outcome ?? "unprocessed", e.n])),
-      issues: issueOrders + periodIssues,
+      issues: issueOrders + periodIssues + circleIssue,
       liveChecked,
+    },
+    chain: {
+      chainCircleId: circle.rows[0].chain_circle_id,
+      createCircleJob: createJob
+        ? { status: createJob.status, attempts: createJob.attempts, lastError: createJob.last_error }
+        : null,
     },
     periods,
     orders,

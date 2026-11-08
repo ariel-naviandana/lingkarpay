@@ -63,10 +63,11 @@ export async function boot() {
   const outbox = await import("../services/outbox.js");
   const payouts = await import("../services/payouts.js");
   const reconciliation = await import("../services/reconciliation.js");
+  const circles = await import("../services/circles.js");
   await runMigrations(pool);
   const app = await buildApp();
   await app.ready();
-  return { app, pool, checkout, midtrans, outbox, payouts, reconciliation };
+  return { app, pool, checkout, midtrans, outbox, payouts, reconciliation, circles };
 }
 
 export async function resetDb(pool: Pool): Promise<void> {
@@ -84,6 +85,8 @@ export interface SeedOptions {
   adminFee?: number;
   /** Tenggat periode 1 dari sekarang (hari). Negatif = sudah lewat. */
   dueInDays?: number;
+  /** ID kelompok on-chain. Bawaan "1" (sudah on-chain); null = belum dibuat di chain. */
+  chainCircleId?: string | null;
 }
 
 export interface SeededMember {
@@ -108,6 +111,7 @@ export async function seedCircle(pool: Pool, opts: SeedOptions = {}): Promise<Se
   const penaltyPct = opts.penaltyPct ?? 5;
   const adminFee = opts.adminFee ?? 1000;
   const dueInDays = opts.dueInDays ?? 7;
+  const chainCircleId = opts.chainCircleId === undefined ? "1" : opts.chainCircleId;
 
   const users: Array<{ id: number; name: string; email: string }> = [];
   for (let i = 1; i <= n; i++) {
@@ -120,9 +124,9 @@ export async function seedCircle(pool: Pool, opts: SeedOptions = {}): Promise<Se
 
   const c = await pool.query<{ id: number }>(
     `INSERT INTO circles (name, contribution_amount, member_count, period_days, penalty_pct,
-                          admin_fee, status, started_at, created_by)
-     VALUES ('Uji', $1, $2, 7, $3, $4, 'active', now(), $5) RETURNING id`,
-    [contribution, n, penaltyPct, adminFee, users[0]!.id],
+                          admin_fee, status, started_at, created_by, chain_circle_id)
+     VALUES ('Uji', $1, $2, 7, $3, $4, 'active', now(), $5, $6) RETURNING id`,
+    [contribution, n, penaltyPct, adminFee, users[0]!.id, chainCircleId],
   );
   const circleId = c.rows[0]!.id;
 

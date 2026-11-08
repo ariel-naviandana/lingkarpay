@@ -497,3 +497,125 @@ describe("rekonsiliasi", () => {
     );
   });
 });
+
+describe("kelompok on-chain (createCircle)", () => {
+  async function insertUser(n: number) {
+    const r = await ctx.pool.query<{ id: number }>(
+      "INSERT INTO users (name, email, password_hash) VALUES ($1, $2, 'x') RETURNING id",
+      [`Pengguna ${n}`, `pengguna${n}@example.com`],
+    );
+    return { id: r.rows[0]!.id, name: `Pengguna ${n}`, email: `pengguna${n}@example.com` };
+  }
+
+  /** Membuat dan memulai kelompok lewat service (bukan seed langsung), seperti di aplikasi. */
+  async function startedCircle() {
+    const u1 = await insertUser(1);
+    const u2 = await insertUser(2);
+    const c = await ctx.circles.createCircle(u1.id, {
+      name: "Arisan Uji",
+      contributionAmount: 10000,
+      memberCount: 2,
+      periodDays: 7,
+      penaltyPct: 5,
+      adminFee: 1000,
+    });
+    await ctx.circles.addMemberByEmail(u1.id, c.id, u2.email);
+    await ctx.circles.startCircle(u1.id, c.id);
+    const period = await ctx.pool.query<{ id: number }>(
+      "SELECT id FROM periods WHERE circle_id = $1 AND period_no = 1",
+      [c.id],
+    );
+    const members = await ctx.pool.query<{ id: number; user_id: number }>(
+      "SELECT id, user_id FROM members WHERE circle_id = $1 ORDER BY turn_order",
+      [c.id],
+    );
+    return { u1, u2, circleId: c.id, periodId: period.rows[0]!.id, members: members.rows };
+  }
+
+  dbTest("startCircle mengantre satu job createCircle tanpa data pribadi", async () => {
+    const s = await startedCircle();
+    const rows = await ctx.pool.query<{ payload: Record<string, unknown>; status: string }>(
+      "SELECT payload, status FROM chain_jobs WHERE kind = 'createCircle'",
+    );
+    assert.equal(rows.rowCount, 1);
+    assert.equal(rows.rows[0]!.status, "queued");
+    const p = rows.rows[0]!.payload as {
+      circleId: number;
+      contributionAmount: number;
+      memberCount: number;
+      members: Array<{ memberRef: string; turnOrder: number }>;
+    };
+    assert.equal(p.circleId, s.circleId);
+    assert.equal(p.contributionAmount, 10000);
+    assert.equal(p.memberCount, 2);
+    assert.deepEqual(p.members.map((m) => m.turnOrder), [1, 2]);
+    for (const m of p.members) assert.match(m.memberRef, /^m_[0-9a-f]{8}$/);
+    const text = JSON.stringify(rows.rows[0]!.payload);
+    assert.ok(!text.includes("@") && !text.includes("Pengguna"));
+  });
+
+  dbTest("job pembayaran ditahan sampai kelompok on-chain; createCircle didahulukan", async () => {
+    const s = await startedCircle();
+    const co = await ctx.checkout.createCheckout(
+      { id: s.u1.id, name: s.u1.name, email: s.u1.email },
+      { circleId: s.circleId, periodId: s.periodId, memberId: s.members[0]!.id },
+    );
+    await settle(co);
+
+    const first = await ctx.outbox.claimJobs(10);
+    assert.deepEqual(first.map((j) => j.kind), ["createCircle"]); // recordPayment belum boleh
+    assert.equal(first[0]!.circleId, s.circleId);
+
+    await ctx.outbox.markCircleCreated(first[0]!.id, "42", "0xcircle");
+    await ctx.outbox.markCircleCreated(first[0]!.id, "42", "0xcircle"); // idempoten
+    const c = await ctx.pool.query<{ chain_circle_id: string | null }>(
+      "SELECT chain_circle_id FROM circles WHERE id = $1",
+      [s.circleId],
+    );
+    assert.equal(c.rows[0]!.chain_circle_id, "42");
+    assert.equal(
+      await count("SELECT count(*)::int AS n FROM chain_transactions WHERE status = 'confirmed'"),
+      1,
+    );
+
+    const next = await ctx.outbox.claimJobs(10);
+    assert.deepEqual(next.map((j) => j.kind), ["recordPayment"]);
+    assert.equal((next[0]!.payload as { circleChainId: string | null }).circleChainId, "42");
+  });
+
+  dbTest("job pembayaran juga ditahan bila createCircle gagal", async () => {
+    const s = await startedCircle();
+    const co = await ctx.checkout.createCheckout(
+      { id: s.u1.id, name: s.u1.name, email: s.u1.email },
+      { circleId: s.circleId, periodId: s.periodId, memberId: s.members[0]!.id },
+    );
+    await settle(co);
+    const [create] = await ctx.outbox.claimJobs(10);
+    await ctx.outbox.markJobFailed(create!.id, "RPC mati");
+    await ctx.pool.query("UPDATE chain_jobs SET next_attempt_at = now()");
+    const again = await ctx.outbox.claimJobs(10);
+    assert.deepEqual(again.map((j) => j.kind), ["createCircle"]);
+    assert.equal(await orderStatus(co.orderId), "SETTLED"); // pembayaran tetap sah
+  });
+
+  dbTest("markJobConfirmed menolak job createCircle (pakai markCircleCreated)", async () => {
+    await startedCircle();
+    const [job] = await ctx.outbox.claimJobs(1);
+    await assert.rejects(
+      () => ctx.outbox.markJobConfirmed(job!.id, "0xabc"),
+      (e) => code(e) === "USE_MARK_CIRCLE_CREATED",
+    );
+  });
+
+  dbTest("rekonsiliasi memuat status kelompok di chain", async () => {
+    const s = await startedCircle();
+    const before = await ctx.reconciliation.reconcileCircle(s.u1, s.circleId, false);
+    assert.equal(before.chain.chainCircleId, null);
+    assert.equal(before.chain.createCircleJob?.status, "queued");
+    assert.equal(before.summary.issues, 0);
+
+    await ctx.pool.query("UPDATE chain_jobs SET status = 'failed'");
+    const failed = await ctx.reconciliation.reconcileCircle(s.u1, s.circleId, false);
+    assert.equal(failed.summary.issues, 1);
+  });
+});
