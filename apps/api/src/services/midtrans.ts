@@ -132,9 +132,20 @@ async function closeTransaction(orderId: string, action: "cancel" | "expire"): P
       502,
     );
   }
+  // Alasan penolakan: status_message, atau error_messages, atau isi balasan mentah (dipangkas).
+  // Balasan Midtrans tidak memuat rahasia kita.
+  const body = res.json;
+  const reason =
+    typeof body.status_message === "string" && body.status_message
+      ? body.status_message
+      : Array.isArray(body.error_messages)
+        ? body.error_messages.join("; ")
+        : Object.keys(body).length > 0
+          ? JSON.stringify(body).slice(0, 300)
+          : "balasan kosong";
   return {
-    statusCode: String(res.json.status_code ?? res.status),
-    message: String(res.json.status_message ?? ""),
+    statusCode: String(body.status_code ?? res.status),
+    message: `HTTP ${res.status}; ${reason}`,
   };
 }
 
