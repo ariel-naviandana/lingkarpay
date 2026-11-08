@@ -89,3 +89,8 @@ Antarmuka dengan jalur smart contract sudah lengkap: job `createCircle`, `record
 `npm test`: 66 tes, 12 suite, semua lulus (sekitar 11 detik). Mencakup skenario yang sulit diuji manual: notifikasi duplikat dan serentak, notifikasi tidak berurutan (pending setelah settlement, settlement setelah expire), signature palsu atau dihitung dari Server Key, jumlah tidak cocok, dua checkout serentak, order gagal/kedaluwarsa diganti, penalti, outbox (retry, gagal permanen, antre ulang, ANCHORED), dan deteksi anomali rekonsiliasi.
 
 Belum dicakup: Iris asli, rekonsiliasi `live=true`, dan konsumsi outbox oleh modul chain.
+
+## Tambahan (2026-11-08)
+- Outbox `createCircle` + `markCircleCreated` (migrasi 002); tes integrasi ditambah (belum dijalankan setelah penambahan ini).
+- `docs/openapi.yaml`, `docs/DEMO.md`, `docs/IRIS.md`.
+- Skrip `smoke-scenarios.ps1` (Expire, Cancel, Ewallet) dan `smoke.ps1 -Iris`: ditulis, belum dijalankan.

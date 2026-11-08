@@ -5,6 +5,7 @@
   Jalankan dari folder apps\api:
     powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1
     powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1 -Both     # dua anggota bayar + pencairan
+    powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1 -Iris -IrisAccount <rekening dummy Iris>   # pencairan lewat Iris sandbox
 
   Satu-satunya langkah manual: membayar di simulator Midtrans (VA, bukan QRIS).
   Hanya data dummy. Skrip tidak membaca atau mencetak key apa pun.
@@ -12,10 +13,14 @@
 param(
   [string]$Base = "http://localhost:3001",
   [switch]$Both,
+  [switch]$Iris,
+  [string]$IrisAccount = "",
+  [string]$IrisBank = "bca",
   [switch]$NoBrowser,
   [int]$TimeoutMinutes = 10
 )
 $ErrorActionPreference = "Stop"
+if ($Iris) { $Both = $true }   # payout hanya terjadi setelah semua anggota membayar
 $results = New-Object System.Collections.Generic.List[object]
 $PaidStatuses = @("SETTLED", "SETTLED_PENDING_CHAIN", "ANCHORED")
 
@@ -149,8 +154,14 @@ if ($Both -and ($null -ne $oA) -and ($PaidStatuses -contains $oA.status)) {
     Check "pembayaran B terdeteksi" ($PaidStatuses -contains $oB.status) "status=$($oB.status)"
     $d = Api GET "/circles/$cid" $null $tokA
     Check "periode 1 siap cair" ($d.currentPeriod.status -eq "ready_payout")
-    $po = Api POST "/payouts/simulate" @{ periodId = $periodId } $tokA
-    Check "payout simulasi dibuat" ($po.status -eq "SIMULATED") "id=$($po.id)"
+    if ($Iris) {
+      if (-not $IrisAccount) { throw "Parameter -IrisAccount wajib untuk -Iris (nomor rekening dummy dari sandbox Iris)." }
+      $po = Api POST "/payouts/iris" @{ periodId = $periodId; beneficiary = @{ name = "Smoke Dummy"; account = $IrisAccount; bank = $IrisBank; email = "dummy@example.com" } } $tokA
+      Check "payout Iris dibuat dan disetujui" ($po.status -eq "APPROVED") "ref=$($po.irisReferenceNo)"
+    } else {
+      $po = Api POST "/payouts/simulate" @{ periodId = $periodId } $tokA
+      Check "payout simulasi dibuat" ($po.status -eq "SIMULATED") "id=$($po.id)"
+    }
     Check "dana pencairan = iuran tanpa biaya admin" ($po.amount -eq 20000) "amount=$($po.amount)"
     Expect-ApiError "payout dua kali ditolak" "PAYOUT_EXISTS" { Api POST "/payouts/simulate" @{ periodId = $periodId } $tokA }
     $d2 = Api GET "/circles/$cid" $null $tokA

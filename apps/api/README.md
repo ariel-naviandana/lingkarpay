@@ -33,6 +33,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1 -Both    # dua angg
 ```
 Skrip membuat pengguna dan kelompok dummy lewat API, membuka halaman Snap, lalu menunggu pembayaran di simulator Midtrans (VA). Hasil tiap pemeriksaan dicetak sebagai PASS/FAIL.
 
+Skenario lain di Midtrans sandbox (`scripts/smoke-scenarios.ps1`): `-Scenario Expire` (order kedaluwarsa, set `ORDER_EXPIRY_MINUTES=5`), `-Scenario Cancel` (batalkan dari dashboard Midtrans), `-Scenario Ewallet` (GoPay/ShopeePay lewat simulator). Pencairan lewat Iris: `docs/IRIS.md`. Runbook demo: `docs/DEMO.md`.
+
 ## Struktur
 ```
 src/config.ts        env tervalidasi

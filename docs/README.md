@@ -6,6 +6,8 @@
 | `API.md` | Endpoint backend, body, respons, kode error | Payment gateway |
 | `ERD.md` | Diagram basis data (Mermaid) dan aturan integritas | Payment gateway |
 | `openapi.yaml` | Spesifikasi OpenAPI 3 semua endpoint. Impor ke Postman atau buka di editor.swagger.io | Payment gateway |
+| `DEMO.md` | Runbook demo dan progress report sisi payment gateway, plus jawaban pertanyaan umum | Payment gateway |
+| `IRIS.md` | Panduan mencoba payout Midtrans Iris sandbox (opsional) | Payment gateway |
 | `RULES.md` | Aturan kerja: git, keamanan, pembayaran, kode | Semua |
 | `PLAN.md` | Rencana pengerjaan, status, hasil uji | Payment gateway |
 | `DEV_LOG.md` | Log pengembangan ide dan keputusan | Semua (tambahkan entri) |
