@@ -42,3 +42,16 @@ Skrip npm `chain:worker` di `apps/api/package.json`, dependensi `viem`, tes (bol
 
 ## Mencoba tanpa contract
 Untuk memeriksa alur dari sisi backend, simulasikan worker lewat REPL atau skrip kecil yang memanggil `claimJobs` lalu `markCircleCreated`/`markJobConfirmed` dengan hash palsu; status order dan rekonsiliasi akan ikut berubah.
+
+## Kerangka awal (sudah disiapkan)
+`worker.example.ts` berisi kerangka worker dengan `viem`: loop `claimJobs`, penanganan job `createCircle`/`recordPayment`/`markPayout`, pelaporan hasil ke outbox. **Belum dikompilasi dan belum diuji.** File itu dikecualikan dari `tsconfig` (`*.example.ts`) agar `npm run typecheck` tetap hijau sebelum `viem` dipasang.
+
+Mengaktifkan: `npm i viem`, ganti nama menjadi `worker.ts`, tambah skrip `"chain:worker": "tsx src/chain/worker.ts"`, isi `.env` (`SEPOLIA_RPC_URL`, `OPERATOR_PRIVATE_KEY`, `LINGKARPAY_ADDRESS`).
+
+### Yang menjadi pekerjaan jalur ini (TODO)
+Cari `TODO(smart-contract)` di file itu:
+1. Idempotensi `createCircle` (worker mati di tengah jalan jangan membuat kelompok ganda).
+2. Perlakuan `AlreadyRecorded` sebagai sukses pada `recordPayment`.
+3. Urutan `closePeriod` dan `markPayout` (bergantung keputusan desain contract).
+4. Pindahkan variabel `.env` ke `config.schema.ts` (zod), shutdown rapi, tes (boleh dengan contract lokal Hardhat).
+5. Tes integrasi: jalankan worker terhadap contract lokal, lalu periksa order menjadi `ANCHORED` dan `circles.chain_circle_id` terisi.
