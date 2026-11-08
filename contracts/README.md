@@ -45,3 +45,25 @@ contracts/
 └── .env.example
 ```
 Skenario tes yang diminta proposal (Tabel 19): pencatatan oleh non-operator ditolak, pencatatan dua kali ditolak, pembayaran lewat tenggat kena penalti, penutupan periode saat iuran belum lengkap tanpa kuorum ditolak, penerima sesuai urutan terkunci, perubahan parameter setelah mulai ditolak, kuorum tidak tercapai tidak berlaku.
+
+## Kerangka awal (sudah disiapkan)
+Folder ini berisi kerangka supaya jalur smart contract punya titik mulai. **Belum dikompilasi dan belum diuji.** Versi paket dan bentuk `hardhat.config.ts` ditebak dari dokumentasi Hardhat 3; jalankan `npx hardhat --init` di folder kosong, bandingkan hasilnya, lalu sesuaikan.
+
+| File | Isi | Status |
+|---|---|---|
+| `contracts/LingkarPay.sol` | Struct, event, error, kontrol akses operator, `createCircle`, `addMember`, `startCircle`, `recordPayment`, fungsi baca, `dueDate`, `recipientOf`, `penaltyDue` | Inti ada |
+| `test/LingkarPay.test.ts` | 4 tes dasar (urutan anggota, non-operator, pencatatan ganda, parameter terkunci) + daftar `it.todo` | Kerangka |
+| `scripts/deploy.ts` | Deploy dan simpan alamat + ABI ke `deployments/` | Kerangka |
+| `hardhat.config.ts`, `package.json`, `.env.example` | Konfigurasi Sepolia (rahasia dari environment) | Kerangka |
+
+### Yang menjadi pekerjaan jalur ini (TODO)
+Cari `TODO(smart-contract)` di `LingkarPay.sol`:
+1. `applyPenalty`: denda keterlambatan seragam, sekali per anggota per periode (rumus sama dengan `penaltyDue`).
+2. `closePeriod`: syarat semua lunas atau kuorum; status `ReadyPayout`; penerima ditentukan jadwal.
+3. `markPayout`: simpan `payoutRefHash`, periode `Done`, buka periode berikutnya, kelompok `Completed` di periode terakhir.
+4. Kuorum `propose`/`vote` (opsional, terakhir).
+5. Tes untuk semua skenario di bagian "Struktur yang disarankan", deploy ke Sepolia, simpan `deployments/sepolia.json`.
+6. Keputusan desain: apakah `markPayout` menutup periode sendiri (supaya worker tidak perlu memanggil `closePeriod` lebih dulu)? Backend hanya punya job `markPayout`. Putuskan bersama jalur payment gateway.
+
+### Konvensi data
+`memberId` (bytes32) = `memberRef` samaran dari backend diubah dengan `stringToHex(ref, { size: 32 })` (viem). Nominal dalam rupiah bulat (`uint256`). `circleId` on-chain berbeda dari `circleId` database; hubungannya disimpan backend di `circles.chain_circle_id` lewat `markCircleCreated`.
