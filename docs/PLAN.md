@@ -47,7 +47,7 @@ Kode langkah 0-12 dan dokumentasi (14) sudah ditulis dan di-commit. Tes otomatis
 | Langkah | Status |
 |---|---|
 | 0, 1 | Selesai |
-| 2 Spike webhook | Kode selesai (ipv4first, signature timing-safe, `/status/:orderId`). Menunggu uji dengan tunnel |
+| 2 Spike webhook | Selesai dan terverifikasi (2026-11-08): webhook pending dan settlement masuk lewat tunnel, signature valid, status pengiriman Completed. Signature dihitung dari Signature Secret Key (`MIDTRANS_SIGNATURE_KEY`), bukan Server Key |
 | 3 Struktur | Selesai |
 | 4 Database | Selesai (belum dijalankan) |
 | 5 Mesin status | Selesai |
@@ -63,3 +63,9 @@ Kode langkah 0-12 dan dokumentasi (14) sudah ditulis dan di-commit. Tes otomatis
 
 ## Yang masih perlu dibuktikan (belum pernah dijalankan)
 Kode ditulis tanpa bisa dikompilasi atau dijalankan di lingkungan pengembangan. Urutan verifikasi: `npm install` → `npm run typecheck` → `docker compose up -d` → `npm run migrate` → uji spike webhook → uji alur penuh (daftar, buat kelompok, mulai, checkout, bayar di simulator, cek `GET /orders/:orderId`).
+
+## Catatan hasil uji spike (2026-11-08)
+- `typecheck` dan `migrate` berhasil di komputer pengembang.
+- Dashboard Midtrans kelompok memisahkan **Server Key** (autentikasi API) dari **Signature Secret Key** (signature notifikasi dan Status API). Server Key terbukti valid untuk Snap dan Status API, tetapi tidak cocok untuk signature.
+- Notification URL sempat tersimpan tanpa path; server menerima notifikasi di `POST /` dan `POST /midtrans-webhook`.
+- Panggilan keluar ke Midtrans dipaksa IPv4 dengan retry (`src/lib/http.ts`) karena Node sempat timeout padahal PowerShell bisa terhubung. Panggilan pertama ke Snap masih bisa lambat (sekitar 11 detik pada satu percobaan).
