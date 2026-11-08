@@ -6,7 +6,7 @@ Belum dimulai. Folder ini milik jalur frontend. Disarankan Vite + React + TypeSc
 Login/daftar, dashboard kelompok, buat kelompok dan undang anggota, detail kelompok (status periode, siapa sudah bayar, giliran, penalti), halaman bayar iuran (Snap), riwayat pembayaran dan status pencairan, portal verifikasi publik (baca dari contract), opsional halaman operator (rekonsiliasi).
 
 ## Memakai API backend
-Dokumen: `docs/API.md` (endpoint, bentuk body dan respons) dan `docs/DESIGN.md`. Backend jalan di `http://localhost:3001`.
+Dokumen: `docs/API.md` (endpoint, bentuk body dan respons), `docs/DESIGN.md`, dan `docs/openapi.yaml` (impor ke Postman, atau buka di editor.swagger.io untuk mencoba endpoint). Backend jalan di `http://localhost:3001`.
 
 | Kebutuhan | Endpoint |
 |---|---|

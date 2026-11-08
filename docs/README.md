@@ -5,6 +5,7 @@
 | `DESIGN.md` | Rancangan antarmuka v1: alur, status pesanan, skema, endpoint, outbox, payout. Kontrak antar jalur | Payment gateway |
 | `API.md` | Endpoint backend, body, respons, kode error | Payment gateway |
 | `ERD.md` | Diagram basis data (Mermaid) dan aturan integritas | Payment gateway |
+| `openapi.yaml` | Spesifikasi OpenAPI 3 semua endpoint. Impor ke Postman atau buka di editor.swagger.io | Payment gateway |
 | `RULES.md` | Aturan kerja: git, keamanan, pembayaran, kode | Semua |
 | `PLAN.md` | Rencana pengerjaan, status, hasil uji | Payment gateway |
 | `DEV_LOG.md` | Log pengembangan ide dan keputusan | Semua (tambahkan entri) |

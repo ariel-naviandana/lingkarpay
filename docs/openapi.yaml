@@ -1,0 +1,631 @@
+openapi: 3.0.3
+info:
+  title: LingkarPay API
+  version: 1.0.0
+  description: |
+    API jalur payment gateway (Midtrans sandbox). Uang dalam rupiah bulat (integer).
+    Auth: header `Authorization: Bearer <token>` dari /auth/register atau /auth/login.
+    Detail dan penjelasan: docs/API.md dan docs/DESIGN.md.
+servers:
+  - url: http://localhost:3001
+    description: Lokal
+tags:
+  - { name: Auth }
+  - { name: Kelompok }
+  - { name: Pembayaran }
+  - { name: Pencairan }
+  - { name: Laporan }
+  - { name: Gateway }
+  - { name: Lainnya }
+
+paths:
+  /health:
+    get:
+      tags: [Lainnya]
+      summary: Cek server hidup
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean } } }
+
+  /public-config:
+    get:
+      tags: [Pembayaran]
+      summary: Konfigurasi publik untuk memuat Snap di frontend
+      responses:
+        "200":
+          description: Client Key memang publik; Server Key tidak pernah keluar.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  environment: { type: string, example: sandbox }
+                  midtransClientKey: { type: string }
+                  snapJsUrl: { type: string, example: "https://app.sandbox.midtrans.com/snap/snap.js" }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Daftar (langsung login)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, maxLength: 100 }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+      responses:
+        "201": { description: Terdaftar, content: { application/json: { schema: { $ref: "#/components/schemas/AuthResult" } } } }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/AuthResult" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Pengguna yang sedang login
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { user: { $ref: "#/components/schemas/User" } } }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /circles:
+    post:
+      tags: [Kelompok]
+      summary: Buat kelompok (status draft). Pembuat otomatis menjadi anggota.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, contributionAmount, memberCount, periodDays]
+              properties:
+                name: { type: string, maxLength: 100 }
+                contributionAmount: { type: integer, minimum: 1000, example: 100000 }
+                memberCount: { type: integer, minimum: 2, maximum: 50 }
+                periodDays: { type: integer, minimum: 1, maximum: 365 }
+                penaltyPct: { type: integer, minimum: 0, maximum: 100, default: 0 }
+                adminFee: { type: integer, minimum: 0, description: "Bawaan DEFAULT_ADMIN_FEE" }
+      responses:
+        "201":
+          description: Dibuat
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Circle"
+                  - type: object
+                    properties: { myMemberId: { type: integer } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+    get:
+      tags: [Kelompok]
+      summary: Kelompok milikku
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  circles:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: "#/components/schemas/Circle"
+                        - type: object
+                          properties: { joinedCount: { type: integer } }
+
+  /circles/{id}:
+    get:
+      tags: [Kelompok]
+      summary: Detail kelompok (anggota, periode, status bayar periode berjalan)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/CircleId" }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/CircleDetail" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /circles/{id}/members:
+    post:
+      tags: [Kelompok]
+      summary: Tambah anggota berdasarkan email (pengguna harus sudah terdaftar). Hanya pembuat, hanya saat draft.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/CircleId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [email], properties: { email: { type: string, format: email } } }
+      responses:
+        "201":
+          description: Ditambahkan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  memberId: { type: integer }
+                  memberRef: { type: string, example: m_ab12cd34 }
+                  name: { type: string }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { description: "CIRCLE_FULL, ALREADY_MEMBER, atau CIRCLE_STARTED", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /circles/{id}/start:
+    post:
+      tags: [Kelompok]
+      summary: Mulai kelompok. Mengunci urutan giliran dan parameter, membuat semua periode, mengantre job createCircle ke chain.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/CircleId" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                order:
+                  type: array
+                  description: Urutan giliran (daftar memberId). Bawaan urutan bergabung.
+                  items: { type: integer }
+      responses:
+        "200":
+          description: Dimulai
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  circle: { $ref: "#/components/schemas/Circle" }
+                  periods: { type: array, items: { $ref: "#/components/schemas/Period" } }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { description: "CIRCLE_NOT_FULL atau CIRCLE_STARTED", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /circles/{id}/periods:
+    get:
+      tags: [Kelompok]
+      summary: Daftar periode
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/CircleId" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { periods: { type: array, items: { $ref: "#/components/schemas/Period" } } }
+
+  /circles/{id}/payments:
+    get:
+      tags: [Kelompok]
+      summary: Riwayat pembayaran dan pencairan kelompok (terbuka bagi semua anggota)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/CircleId" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payments: { type: array, items: { $ref: "#/components/schemas/Payment" } }
+                  payouts: { type: array, items: { $ref: "#/components/schemas/PayoutItem" } }
+
+  /checkout:
+    post:
+      tags: [Pembayaran]
+      summary: Buat order iuran dan token Snap. Idempoten.
+      description: |
+        Order PENDING yang masih berlaku dikembalikan apa adanya (200, token sama).
+        Frontend memanggil `snap.pay(token)`, lalu polling GET /orders/{orderId}.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [circleId, periodId, memberId]
+              properties:
+                circleId: { type: integer }
+                periodId: { type: integer }
+                memberId: { type: integer, description: Harus milik pengguna yang login }
+      responses:
+        "201": { description: Order baru, content: { application/json: { schema: { $ref: "#/components/schemas/CheckoutResult" } } } }
+        "200": { description: Memakai ulang order PENDING, content: { application/json: { schema: { $ref: "#/components/schemas/CheckoutResult" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { description: "ALREADY_PAID, CIRCLE_NOT_ACTIVE, atau PERIOD_NOT_OPEN", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: "GATEWAY_ERROR atau GATEWAY_UNREACHABLE", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /orders/{orderId}:
+    get:
+      tags: [Pembayaran]
+      summary: Detail dan riwayat status order (pemilik order atau pembuat kelompok)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string }, example: LP-1-1-1-mw78cid1 }
+        - name: sync
+          in: query
+          required: false
+          description: "true = tanya Status API Midtrans lebih dulu (pemulihan bila webhook terlambat)"
+          schema: { type: string, enum: ["true", "false"] }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Order" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /midtrans-webhook:
+    post:
+      tags: [Gateway]
+      summary: Notifikasi Midtrans (dipanggil Midtrans, bukan frontend)
+      description: Juga diterima di `POST /`. Signature diverifikasi (SHA512 dengan Signature Secret Key).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: "applied, unchanged, duplicate, unknown_order, ignored_transition, atau ignored_status"
+          content: { application/json: { schema: { $ref: "#/components/schemas/WebhookResult" } } }
+        "400": { description: "amount_mismatch atau invalid_payload", content: { application/json: { schema: { $ref: "#/components/schemas/WebhookResult" } } } }
+        "401": { description: invalid_signature, content: { application/json: { schema: { $ref: "#/components/schemas/WebhookResult" } } } }
+
+  /status/{orderId}:
+    get:
+      tags: [Gateway]
+      summary: Status dari Status API Midtrans + verifikasi signature (sandbox, tanpa auth)
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orderId: { type: string }
+                  statusCode: { type: string }
+                  transactionStatus: { type: string, example: settlement }
+                  fraudStatus: { type: string }
+                  paymentType: { type: string }
+                  grossAmount: { type: string, example: "11000.00" }
+                  signatureValid: { type: boolean }
+        "404": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+
+  /payouts/simulate:
+    post:
+      tags: [Pencairan]
+      summary: Simulasi pencairan periode (pembuat kelompok, periode harus ready_payout)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [periodId], properties: { periodId: { type: integer } } }
+      responses:
+        "201": { description: Dibuat, content: { application/json: { schema: { $ref: "#/components/schemas/Payout" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { description: "PERIOD_NOT_READY atau PAYOUT_EXISTS", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /payouts/iris:
+    post:
+      tags: [Pencairan]
+      summary: Payout lewat Midtrans Iris sandbox (butuh IRIS_ENABLED dan kunci). Data penerima dummy.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [periodId, beneficiary]
+              properties:
+                periodId: { type: integer }
+                beneficiary:
+                  type: object
+                  required: [name, account, bank, email]
+                  properties:
+                    name: { type: string }
+                    account: { type: string }
+                    bank: { type: string, example: bca }
+                    email: { type: string, format: email }
+      responses:
+        "201": { description: Dibuat, content: { application/json: { schema: { $ref: "#/components/schemas/Payout" } } } }
+        "400": { description: IRIS_DISABLED atau BENEFICIARY_REQUIRED, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { $ref: "#/components/responses/Error" }
+
+  /reports/reconciliation:
+    get:
+      tags: [Laporan]
+      summary: Rekonsiliasi database, gateway, dan chain (pembuat kelompok)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: circleId, in: query, required: true, schema: { type: integer } }
+        - { name: live, in: query, required: false, schema: { type: string, enum: ["true", "false"], default: "false" }, description: "true = periksa ke Status API (maks. 50 order)" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Reconciliation" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
+
+  parameters:
+    CircleId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string, example: ALREADY_PAID }
+            message: { type: string }
+            details: { type: array, items: { type: object }, description: Hanya pada VALIDATION_ERROR }
+
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+
+    AuthResult:
+      type: object
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        token: { type: string }
+
+    OrderStatus:
+      type: string
+      enum: [PENDING, SETTLED, SETTLED_PENDING_CHAIN, ANCHORED, FAILED, EXPIRED]
+      description: SETTLED = sah dibayar; ANCHORED = tercatat di Sepolia.
+
+    Circle:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        contributionAmount: { type: integer }
+        memberCount: { type: integer }
+        periodDays: { type: integer }
+        penaltyPct: { type: integer }
+        adminFee: { type: integer }
+        status: { type: string, enum: [draft, active, completed] }
+        chainCircleId: { type: string, nullable: true, description: "null sampai kelompok dicatat di chain" }
+        createdBy: { type: integer }
+        startedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    Period:
+      type: object
+      properties:
+        id: { type: integer }
+        periodNo: { type: integer }
+        dueDate: { type: string, format: date-time }
+        status: { type: string, enum: [scheduled, running, ready_payout, done] }
+        recipientMemberId: { type: integer, nullable: true }
+
+    CircleDetail:
+      type: object
+      properties:
+        circle: { $ref: "#/components/schemas/Circle" }
+        myMemberId: { type: integer }
+        isCreator: { type: boolean }
+        members:
+          type: array
+          items:
+            type: object
+            properties:
+              memberId: { type: integer }
+              memberRef: { type: string }
+              name: { type: string }
+              turnOrder: { type: integer, nullable: true }
+              isMe: { type: boolean }
+              currentPayment:
+                type: object
+                nullable: true
+                properties:
+                  status: { allOf: [{ $ref: "#/components/schemas/OrderStatus" }], nullable: true, description: "null = belum ada order" }
+                  paid: { type: boolean }
+                  penaltyDue: { type: integer }
+        periods: { type: array, items: { $ref: "#/components/schemas/Period" } }
+        currentPeriod: { allOf: [{ $ref: "#/components/schemas/Period" }], nullable: true }
+
+    CheckoutResult:
+      type: object
+      properties:
+        orderId: { type: string }
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        token: { type: string, nullable: true, description: Token untuk snap.pay(token) }
+        amount: { type: integer }
+        penaltyAmount: { type: integer }
+        adminFee: { type: integer }
+        grossAmount: { type: integer, description: iuran + penalti + biaya admin }
+        expiresAt: { type: string, format: date-time }
+        reused: { type: boolean }
+
+    Order:
+      type: object
+      properties:
+        orderId: { type: string }
+        circleId: { type: integer }
+        periodNo: { type: integer }
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        amount: { type: integer }
+        penaltyAmount: { type: integer }
+        adminFee: { type: integer }
+        grossAmount: { type: integer }
+        paymentType: { type: string, nullable: true }
+        gatewayRef: { type: string, nullable: true }
+        expiresAt: { type: string, format: date-time }
+        paidAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        chainStatus: { type: string, nullable: true, enum: [queued, sent, confirmed, failed] }
+        history:
+          type: array
+          items:
+            type: object
+            properties:
+              from: { type: string, nullable: true }
+              to: { type: string }
+              reason: { type: string, nullable: true }
+              at: { type: string, format: date-time }
+
+    Payment:
+      type: object
+      properties:
+        orderId: { type: string }
+        periodNo: { type: integer }
+        memberRef: { type: string }
+        memberName: { type: string }
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        amount: { type: integer }
+        penaltyAmount: { type: integer }
+        adminFee: { type: integer }
+        grossAmount: { type: integer }
+        paymentType: { type: string, nullable: true }
+        paidAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        chainStatus: { type: string, nullable: true }
+        txHash: { type: string, nullable: true }
+
+    PayoutItem:
+      type: object
+      properties:
+        id: { type: integer }
+        periodNo: { type: integer }
+        amount: { type: integer }
+        mode: { type: string, enum: [simulated, iris] }
+        status: { type: string, enum: [SIMULATED, QUEUED, APPROVED, COMPLETED, FAILED] }
+        recipientMemberRef: { type: string }
+        payoutRefHash: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    Payout:
+      type: object
+      properties:
+        id: { type: integer }
+        status: { type: string, enum: [SIMULATED, QUEUED, APPROVED, COMPLETED, FAILED] }
+        mode: { type: string, enum: [simulated, iris] }
+        amount: { type: integer, description: "iuran + penalti terkumpul, tanpa biaya admin" }
+        irisReferenceNo: { type: string, nullable: true }
+        payoutRefHash: { type: string }
+
+    WebhookResult:
+      type: object
+      properties:
+        ok: { type: boolean }
+        outcome:
+          type: string
+          enum: [applied, unchanged, duplicate, unknown_order, ignored_transition, ignored_status, amount_mismatch, invalid_payload, invalid_signature]
+
+    Reconciliation:
+      type: object
+      properties:
+        circleId: { type: integer }
+        circleName: { type: string }
+        generatedAt: { type: string, format: date-time }
+        live: { type: boolean }
+        summary:
+          type: object
+          properties:
+            ordersByStatus: { type: object, additionalProperties: { type: integer } }
+            grossPaid: { type: integer }
+            adminFeeRevenue: { type: integer }
+            collectedForPayout: { type: integer }
+            payoutTotal: { type: integer }
+            webhookEventsByOutcome: { type: object, additionalProperties: { type: integer } }
+            issues: { type: integer, description: Jumlah masalah (flag informasi tidak dihitung) }
+            liveChecked: { type: integer }
+        chain:
+          type: object
+          properties:
+            chainCircleId: { type: string, nullable: true }
+            createCircleJob:
+              type: object
+              nullable: true
+              properties:
+                status: { type: string }
+                attempts: { type: integer }
+                lastError: { type: string, nullable: true }
+        periods:
+          type: array
+          items:
+            type: object
+            properties:
+              periodNo: { type: integer }
+              collected: { type: integer }
+              payoutAmount: { type: integer, nullable: true }
+              payoutStatus: { type: string, nullable: true }
+              difference: { type: integer, nullable: true, description: "terkumpul - dicairkan; harus 0 bila sudah dicairkan" }
+        orders:
+          type: array
+          items:
+            type: object
+            properties:
+              orderId: { type: string }
+              periodNo: { type: integer }
+              memberRef: { type: string }
+              status: { $ref: "#/components/schemas/OrderStatus" }
+              grossAmount: { type: integer }
+              gatewayRef: { type: string, nullable: true }
+              paidAt: { type: string, format: date-time, nullable: true }
+              chainJob:
+                type: object
+                nullable: true
+                properties:
+                  status: { type: string }
+                  attempts: { type: integer }
+              txHash: { type: string, nullable: true }
+              gatewayStatus: { type: string, nullable: true, description: Hanya bila live=true }
+              flags: { type: array, items: { type: string } }
