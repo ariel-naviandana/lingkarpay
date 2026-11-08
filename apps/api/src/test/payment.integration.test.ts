@@ -707,7 +707,7 @@ describe("pembatalan order", () => {
   dbTest("expire: order PENDING menjadi EXPIRED lewat Expire API; anggota bisa membayar lagi", async () => {
     const s = await seedCircle(ctx.pool);
     const co = await checkoutFor(s, 0);
-    mockGateway(co, "200", "expire", "407");
+    mockGateway(co, "407", "expire", "407"); // Expire API membalas 407 saat sukses
     const res = await ctx.orders.expireOrder(asUser(s.members[0]!), co.orderId);
     assert.equal(res.status, "EXPIRED");
     ctx.midtrans.gatewayHttp.request = async () => ({ status: 201, ok: true, json: { token: "tok-baru" } });

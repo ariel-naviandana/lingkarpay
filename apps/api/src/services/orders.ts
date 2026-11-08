@@ -111,7 +111,10 @@ async function closeOrder(user: AuthUser, orderId: string, action: "cancel" | "e
   // Selaraskan dengan kenyataan di Midtrans (berhasil, atau ternyata sudah dibayar/kedaluwarsa).
   const gatewaySync = await syncOrderFromGateway(orderId);
   const latest = await getOrderForUser(user, orderId);
-  if (result.statusCode !== "200") {
+  // Sukses: Cancel API membalas 200; Expire API membalas 407 ("Success, transaction is expired").
+  const succeeded =
+    action === "cancel" ? result.statusCode === "200" : ["200", "407"].includes(result.statusCode);
+  if (!succeeded) {
     const detail = result.message ? `: ${result.message}` : "";
     throw conflict(
       refused,
