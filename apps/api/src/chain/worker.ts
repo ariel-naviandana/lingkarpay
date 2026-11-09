@@ -1,19 +1,18 @@
 /**
- * KERANGKA modul chain (jalur smart contract). BELUM dikompilasi dan belum diuji.
+ * Modul chain (jalur smart contract): worker yang membaca outbox dan mencatatnya ke contract LingkarPay.
+ * Dijalankan: npm run chain:worker   (butuh: npm i, Postgres, backend yang sudah memproses pembayaran)
  *
- * Cara memakai:
- *   1. npm i viem                      (di apps/api)
- *   2. ganti nama file ini menjadi worker.ts (tsconfig mengecualikan *.example.ts agar typecheck tetap hijau)
- *   3. tambahkan skrip:  "chain:worker": "tsx src/chain/worker.ts"
- *   4. isi .env: SEPOLIA_RPC_URL, OPERATOR_PRIVATE_KEY (akun testnet khusus), LINGKARPAY_ADDRESS
+ * Konfigurasi di .env (divalidasi di src/config.schema.ts):
+ *   CHAIN_NAME=hardhat|sepolia, CHAIN_RPC_URL, OPERATOR_PRIVATE_KEY (akun testnet khusus), LINGKARPAY_ADDRESS
+ * Akun OPERATOR_PRIVATE_KEY harus akun yang men-deploy contract (menjadi `operator`).
  *
- * Yang SUDAH ada : loop claim → kirim → konfirmasi, penanganan tiga jenis job, pelaporan hasil ke outbox.
+ * Yang SUDAH ada : loop claim -> kirim -> konfirmasi, tiga jenis job, pelaporan hasil ke outbox.
  * Yang TODO      : lihat penanda TODO(smart-contract) di bawah.
  */
-import "dotenv/config";
 import { createPublicClient, createWalletClient, http, parseAbi, parseEventLogs, stringToHex, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { sepolia } from "viem/chains";
+import { hardhat, sepolia } from "viem/chains";
+import { config } from "../config.js";
 import {
   claimJobs,
   markCircleCreated,
@@ -37,17 +36,17 @@ const abi = parseAbi([
   "event CircleCreated(uint256 indexed circleId, uint256 contributionAmount, uint32 memberCount, uint32 periodDays, uint16 penaltyPct)",
 ]);
 
-// TODO(smart-contract): pindahkan ke src/config.schema.ts (divalidasi zod) seperti variabel lain.
-const RPC_URL = process.env.SEPOLIA_RPC_URL ?? "";
-const PRIVATE_KEY = process.env.OPERATOR_PRIVATE_KEY as Hex | undefined;
-const CONTRACT = process.env.LINGKARPAY_ADDRESS as Hex | undefined;
+const chain = config.CHAIN_NAME === "hardhat" ? hardhat : sepolia;
+const RPC_URL = config.CHAIN_RPC_URL;
+const PRIVATE_KEY = config.OPERATOR_PRIVATE_KEY as Hex | undefined;
+const CONTRACT = config.LINGKARPAY_ADDRESS as Hex | undefined;
 if (!RPC_URL || !PRIVATE_KEY || !CONTRACT) {
-  throw new Error("Isi SEPOLIA_RPC_URL, OPERATOR_PRIVATE_KEY, dan LINGKARPAY_ADDRESS di .env");
+  throw new Error("Isi CHAIN_RPC_URL, OPERATOR_PRIVATE_KEY, dan LINGKARPAY_ADDRESS di .env");
 }
 
 const account = privateKeyToAccount(PRIVATE_KEY);
-const publicClient = createPublicClient({ chain: sepolia, transport: http(RPC_URL) });
-const wallet = createWalletClient({ account, chain: sepolia, transport: http(RPC_URL) });
+const publicClient = createPublicClient({ chain, transport: http(RPC_URL) });
+const wallet = createWalletClient({ account, chain, transport: http(RPC_URL) });
 
 /** memberRef samaran dari backend (mis. "m_ab12cd34") menjadi bytes32. */
 const toMemberId = (ref: string): Hex => stringToHex(ref, { size: 32 });
@@ -128,7 +127,7 @@ async function tick(): Promise<number> {
 
 // TODO(smart-contract): shutdown rapi (SIGINT), metrik, dan penanganan nonce bila ada beberapa worker.
 async function main() {
-  console.log(`worker chain mulai. operator ${account.address}, contract ${CONTRACT}`);
+  console.log(`worker chain mulai di ${chain.name}. operator ${account.address}, contract ${CONTRACT}`);
   for (;;) {
     const n = await tick().catch((e) => {
       console.error("tick gagal:", e);

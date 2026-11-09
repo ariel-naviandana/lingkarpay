@@ -11,6 +11,19 @@ const bool = (fallback: "true" | "false") =>
     .default(fallback)
     .transform((v) => v === "true");
 
+/** String opsional: kosong atau spasi dianggap tidak diisi. */
+const optionalText = z
+  .string()
+  .optional()
+  .transform((v) => (v && v.trim().length > 0 ? v.trim() : undefined));
+
+/** Nilai heksadesimal opsional dengan panjang tetap. Pesan error tidak memuat nilainya. */
+const hexValue = (digits: number, label: string) =>
+  optionalText.refine(
+    (v) => v === undefined || new RegExp(`^0x[0-9a-fA-F]{${digits}}$`).test(v),
+    `format ${label} tidak valid (0x + ${digits} karakter heksadesimal)`,
+  );
+
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(3001),
@@ -36,6 +49,12 @@ const schema = z.object({
   IRIS_CREATOR_KEY: z.string().optional(),
   IRIS_APPROVER_KEY: z.string().optional(),
   IRIS_OTP: z.string().default("335163"),
+
+  // Modul chain (worker): jaringan, RPC, akun operator (testnet khusus), dan alamat contract.
+  CHAIN_NAME: z.enum(["hardhat", "sepolia"]).default("sepolia"),
+  CHAIN_RPC_URL: optionalText,
+  OPERATOR_PRIVATE_KEY: hexValue(64, "private key"),
+  LINGKARPAY_ADDRESS: hexValue(40, "alamat contract"),
 });
 
 export type Config = z.infer<typeof schema>;

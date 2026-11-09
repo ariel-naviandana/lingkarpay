@@ -8,3 +8,4 @@
 /.secrets
 # Deploy ke jaringan lokal tidak perlu disimpan
 /ignition/deployments/chain-31337
+/deployments/local.json

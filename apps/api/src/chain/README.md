@@ -43,15 +43,34 @@ Skrip npm `chain:worker` di `apps/api/package.json`, dependensi `viem`, tes (bol
 ## Mencoba tanpa contract
 Untuk memeriksa alur dari sisi backend, simulasikan worker lewat REPL atau skrip kecil yang memanggil `claimJobs` lalu `markCircleCreated`/`markJobConfirmed` dengan hash palsu; status order dan rekonsiliasi akan ikut berubah.
 
-## Kerangka awal (sudah disiapkan)
-`worker.example.ts` berisi kerangka worker dengan `viem`: loop `claimJobs`, penanganan job `createCircle`/`recordPayment`/`markPayout`, pelaporan hasil ke outbox. **Belum dikompilasi dan belum diuji.** File itu dikecualikan dari `tsconfig` (`*.example.ts`) agar `npm run typecheck` tetap hijau sebelum `viem` dipasang.
+## Worker (sudah disiapkan, menunggu uji ujung ke ujung)
+`worker.ts` memakai `viem`: loop `claimJobs`, penanganan job `createCircle`/`recordPayment`/`markPayout`, pelaporan hasil ke outbox. Konfigurasi di `.env` (divalidasi di `src/config.schema.ts`): `CHAIN_NAME` (`hardhat` untuk node lokal, `sepolia`), `CHAIN_RPC_URL`, `OPERATOR_PRIVATE_KEY`, `LINGKARPAY_ADDRESS`. **Belum pernah dijalankan.**
 
-Mengaktifkan: `npm i viem`, ganti nama menjadi `worker.ts`, tambah skrip `"chain:worker": "tsx src/chain/worker.ts"`, isi `.env` (`SEPOLIA_RPC_URL`, `OPERATOR_PRIVATE_KEY`, `LINGKARPAY_ADDRESS`).
+### Uji terhadap node lokal (T5)
+Butuh empat terminal (Windows). Dari `C:\coding\lingkarpay`:
+```powershell
+# 1) Postgres dan backend (seperti biasa)
+docker compose up -d
+cd apps\api; npm install; npm run migrate; npm run dev
 
-### Yang menjadi pekerjaan jalur ini (TODO)
-Cari `TODO(smart-contract)` di file itu:
+# 2) Node blockchain lokal (terminal lain). Catat "Account #0" dan private key-nya dari layar node.
+cd contracts; npm run node
+
+# 3) Deploy contract ke node lokal (terminal lain); catat alamat yang dicetak
+cd contracts; npm run deploy:local
+```
+Isi `apps\api\.env` (kunci akun lokal ini hanya untuk node lokal, bukan untuk uang asli): `CHAIN_NAME=hardhat`, `CHAIN_RPC_URL=http://127.0.0.1:8545`, `OPERATOR_PRIVATE_KEY` = private key Account #0 yang ditampilkan node, `LINGKARPAY_ADDRESS` = alamat hasil deploy. Restart backend, lalu:
+```powershell
+# 4) Worker (terminal lain)
+cd apps\api; npm run chain:worker
+
+# 5) Buat data dan bayar
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1 -Both
+```
+Yang harus terlihat: log worker `job N (createCircle) selesai`, `circles.chain_circle_id` terisi, lalu `job N (recordPayment) selesai` dan order menjadi `ANCHORED` (`GET /orders/<id>` menampilkan `chainStatus: confirmed`), dan setelah pencairan job `markPayout` selesai.
+
+### TODO yang masih tersisa
 1. Idempotensi `createCircle` (worker mati di tengah jalan jangan membuat kelompok ganda).
-2. Perlakuan `AlreadyRecorded` sebagai sukses pada `recordPayment`.
-3. Urutan `closePeriod` dan `markPayout` (bergantung keputusan desain contract).
-4. Pindahkan variabel `.env` ke `config.schema.ts` (zod), shutdown rapi, tes (boleh dengan contract lokal Hardhat).
-5. Tes integrasi: jalankan worker terhadap contract lokal, lalu periksa order menjadi `ANCHORED` dan `circles.chain_circle_id` terisi.
+2. `AlreadyRecorded` pada `recordPayment` dianggap sukses (tx sebelumnya sebenarnya berhasil).
+3. Shutdown rapi (SIGINT), metrik, dan banyak worker.
+4. Tes integrasi worker terhadap contract lokal.

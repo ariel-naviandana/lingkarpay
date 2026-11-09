@@ -47,6 +47,40 @@ describe("konfigurasi (.env)", () => {
     );
   });
 
+  it("konfigurasi chain: bawaan Sepolia dan semua nilai opsional", () => {
+    const c = parseConfig(minimal);
+    assert.equal(c.CHAIN_NAME, "sepolia");
+    assert.equal(c.CHAIN_RPC_URL, undefined);
+    assert.equal(c.OPERATOR_PRIVATE_KEY, undefined);
+    assert.equal(c.LINGKARPAY_ADDRESS, undefined);
+    assert.equal(parseConfig({ ...minimal, OPERATOR_PRIVATE_KEY: "", LINGKARPAY_ADDRESS: "  " }).OPERATOR_PRIVATE_KEY, undefined);
+  });
+
+  it("konfigurasi chain: nilai valid diterima", () => {
+    const c = parseConfig({
+      ...minimal,
+      CHAIN_NAME: "hardhat",
+      CHAIN_RPC_URL: "http://127.0.0.1:8545",
+      OPERATOR_PRIVATE_KEY: "0x" + "ab".repeat(32),
+      LINGKARPAY_ADDRESS: "0x" + "cd".repeat(20),
+    });
+    assert.equal(c.CHAIN_NAME, "hardhat");
+    assert.equal(c.LINGKARPAY_ADDRESS, "0x" + "cd".repeat(20));
+  });
+
+  it("konfigurasi chain: format salah ditolak tanpa membocorkan nilainya", () => {
+    const rahasia = "0xrahasia-bukan-heks";
+    assert.throws(
+      () => parseConfig({ ...minimal, OPERATOR_PRIVATE_KEY: rahasia }),
+      (e: unknown) => {
+        const m = (e as Error).message;
+        return m.includes("OPERATOR_PRIVATE_KEY") && !m.includes(rahasia);
+      },
+    );
+    assert.throws(() => parseConfig({ ...minimal, LINGKARPAY_ADDRESS: "0x123" }), /LINGKARPAY_ADDRESS/);
+    assert.throws(() => parseConfig({ ...minimal, CHAIN_NAME: "mainnet" }), /CHAIN_NAME/);
+  });
+
   it("batas nilai: ORDER_EXPIRY_MINUTES minimal 5", () => {
     assert.throws(() => parseConfig({ ...minimal, ORDER_EXPIRY_MINUTES: "2" }), /ORDER_EXPIRY_MINUTES/);
     assert.equal(parseConfig({ ...minimal, ORDER_EXPIRY_MINUTES: "5" }).ORDER_EXPIRY_MINUTES, 5);

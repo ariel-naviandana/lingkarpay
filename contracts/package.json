@@ -8,9 +8,10 @@
     "build": "hardhat build",
     "test": "hardhat test nodejs",
     "typecheck": "hardhat build && tsc --noEmit",
-    "deploy:local": "hardhat ignition deploy ignition/modules/LingkarPay.ts",
+    "deploy:local": "hardhat ignition deploy --network localhost ignition/modules/LingkarPay.ts",
     "deploy:sepolia": "hardhat ignition deploy --network sepolia ignition/modules/LingkarPay.ts",
-    "export:sepolia": "hardhat run scripts/export-deployment.ts"
+    "export:sepolia": "hardhat run scripts/export-deployment.ts",
+    "node": "hardhat node"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ignition": "^3.1.9",
