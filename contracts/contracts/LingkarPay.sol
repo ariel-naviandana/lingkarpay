@@ -9,8 +9,9 @@ pragma solidity ^0.8.34;
  * Hanya `operator` (akun penanda tangan backend) yang boleh mencatat. Tanpa data pribadi:
  * anggota hanya dikenal lewat `memberId` (bytes32 dari memberRef samaran, mis. "m_ab12cd34").
  *
- * Yang SUDAH ada : createCircle, addMember, startCircle, recordPayment, fungsi baca, event.
- * Yang TODO      : applyPenalty, closePeriod, markPayout, kuorum (propose/vote), tes lengkap.
+ * Yang SUDAH ada : createCircle, addMember, startCircle, recordPayment, applyPenalty, closePeriod,
+ *                  markPayout, fungsi baca, event.
+ * Yang TODO      : kuorum (propose/vote), opsional dan dikerjakan terakhir.
  * Lihat contracts/README.md dan docs/DESIGN.md bagian 7 untuk antarmuka dengan backend.
  */
 contract LingkarPay {
@@ -39,6 +40,11 @@ contract LingkarPay {
         bytes32 refHash; // Keccak-256 ringkasan transaksi gateway (bukti silang)
     }
 
+    struct Penalty {
+        bool applied;
+        uint256 amount; // denda terutang (rupiah), dicatat sebagai audit; contract tidak memindahkan uang
+    }
+
     // ---------------------------------------------------------------- state
     address public operator;
     uint256 public circleCount;
@@ -48,6 +54,7 @@ contract LingkarPay {
     mapping(uint256 => mapping(bytes32 => bool)) private _isMember;
     mapping(uint256 => mapping(uint32 => Period)) private _periods;
     mapping(uint256 => mapping(uint32 => mapping(bytes32 => Payment))) private _payments;
+    mapping(uint256 => mapping(uint32 => mapping(bytes32 => Penalty))) private _penalties;
 
     // --------------------------------------------------------------- events
     event CircleCreated(
@@ -67,9 +74,9 @@ contract LingkarPay {
         uint64 paidAt,
         bool late
     );
-    event PenaltyApplied(uint256 indexed circleId, uint32 indexed periodNo, bytes32 indexed memberId, uint256 amount); // TODO
-    event PeriodClosed(uint256 indexed circleId, uint32 indexed periodNo, bytes32 recipient); // TODO
-    event PayoutMarked(uint256 indexed circleId, uint32 indexed periodNo, bytes32 recipient, bytes32 payoutRefHash); // TODO
+    event PenaltyApplied(uint256 indexed circleId, uint32 indexed periodNo, bytes32 indexed memberId, uint256 amount);
+    event PeriodClosed(uint256 indexed circleId, uint32 indexed periodNo, bytes32 recipient);
+    event PayoutMarked(uint256 indexed circleId, uint32 indexed periodNo, bytes32 recipient, bytes32 payoutRefHash);
 
     // --------------------------------------------------------------- errors
     error NotOperator();
@@ -80,7 +87,12 @@ contract LingkarPay {
     error NotMember();
     error PeriodNotRunning();
     error AlreadyRecorded();
-    error NotImplemented();
+    error PeriodNotComplete(); // belum semua anggota lunas
+    error PeriodNotReady(); // periode belum/sudah tidak bisa dicairkan
+    error NotLate(); // belum lewat tenggat
+    error AlreadyPaid();
+    error PenaltyAlreadyApplied();
+    error NoPenalty(); // kelompok tanpa penalti (penaltyPct = 0)
 
     modifier onlyOperator() {
         if (msg.sender != operator) revert NotOperator();
@@ -153,33 +165,76 @@ contract LingkarPay {
         emit PaymentRecorded(circleId, periodNo, memberId, refHash, paidAt, paidAt > dueDate(circleId, periodNo));
     }
 
-    // ------------------------------------------------------------ TODO (rumit)
-    /// TODO(smart-contract): hitung denda bila lewat tenggat dan anggota belum bayar, seragam untuk
-    /// semua anggota. Boleh dipanggil siapa pun setelah tenggat. Tolak bila sudah pernah diterapkan.
-    /// Rumus yang sama dengan backend: ceil(iuran * penaltyPct / 100) (lihat penaltyDue di bawah).
-    function applyPenalty(uint256, uint32, bytes32) external {
-        revert NotImplemented();
+    // ------------------------------------------------- penalti dan pencairan
+    /// Mencatat denda yang TERUTANG bagi anggota yang belum bayar setelah tenggat (catatan audit; contract
+    /// tidak memindahkan uang, tagihan denda ditagih backend). Boleh dipanggil siapa pun, sekali per anggota
+    /// per periode. Rumus sama dengan backend: ceil(iuran * penaltyPct / 100), seragam untuk semua anggota.
+    function applyPenalty(uint256 circleId, uint32 periodNo, bytes32 memberId) external {
+        Circle storage c = _circles[circleId];
+        if (c.status != CircleStatus.Active) revert WrongStatus();
+        if (!_isMember[circleId][memberId]) revert NotMember();
+        if (_periods[circleId][periodNo].status != PeriodStatus.Running) revert PeriodNotRunning();
+        if (c.penaltyPct == 0) revert NoPenalty();
+        if (block.timestamp <= dueDate(circleId, periodNo)) revert NotLate();
+        if (_payments[circleId][periodNo][memberId].paid) revert AlreadyPaid();
+        Penalty storage pen = _penalties[circleId][periodNo][memberId];
+        if (pen.applied) revert PenaltyAlreadyApplied();
+
+        uint256 amount = (c.contributionAmount * c.penaltyPct + 99) / 100;
+        pen.applied = true;
+        pen.amount = amount;
+        emit PenaltyApplied(circleId, periodNo, memberId, amount);
     }
 
-    /// TODO(smart-contract): tutup periode. Syarat: semua anggota lunas (paidCount == memberCount)
-    /// ATAU keputusan kuorum. Ubah status ke ReadyPayout dan emit PeriodClosed dengan penerima
-    /// = recipientOf(circleId, periodNo) (ditentukan jadwal, bukan pilihan operator).
-    /// Catatan desain: worker memanggil closePeriod sebelum markPayout (backend hanya punya job markPayout).
-    function closePeriod(uint256, uint32) external onlyOperator {
-        revert NotImplemented();
+    /// Menutup periode: semua anggota harus lunas. Status menjadi ReadyPayout dan penerima ditentukan
+    /// jadwal (recipientOf), bukan pilihan operator. Biasanya tidak perlu dipanggil langsung karena
+    /// markPayout menutup periode sendiri; fungsi ini ada agar penutupan bisa dipisah (dan untuk jalur kuorum).
+    function closePeriod(uint256 circleId, uint32 periodNo) external onlyOperator {
+        Circle storage c = _circles[circleId];
+        if (c.status != CircleStatus.Active) revert WrongStatus();
+        Period storage p = _periods[circleId][periodNo];
+        if (p.status != PeriodStatus.Running) revert PeriodNotRunning();
+        if (p.paidCount != c.memberCount) revert PeriodNotComplete();
+        _close(circleId, periodNo, p);
     }
 
-    /// TODO(smart-contract): catat bahwa pencairan sudah dijalankan di sisi gateway. Syarat: ReadyPayout.
-    /// Simpan payoutRefHash, ubah ke Done, buka periode berikutnya (Running), atau tandai kelompok
-    /// Completed bila ini periode terakhir. Emit PayoutMarked.
-    function markPayout(uint256, uint32, bytes32) external onlyOperator {
-        revert NotImplemented();
+    /// Job "markPayout": mencatat bahwa pencairan sudah dijalankan di sisi gateway. Bila periode masih
+    /// Running dan semua sudah lunas, periode ditutup di sini juga (keputusan desain 1). Lalu periode menjadi
+    /// Done, periode berikutnya dibuka (Running), atau kelompok menjadi Completed di periode terakhir.
+    function markPayout(uint256 circleId, uint32 periodNo, bytes32 payoutRefHash) external onlyOperator {
+        Circle storage c = _circles[circleId];
+        if (c.status != CircleStatus.Active) revert WrongStatus();
+        if (payoutRefHash == bytes32(0)) revert InvalidParams();
+        Period storage p = _periods[circleId][periodNo];
+
+        if (p.status == PeriodStatus.Running) {
+            if (p.paidCount != c.memberCount) revert PeriodNotComplete();
+            _close(circleId, periodNo, p);
+        } else if (p.status != PeriodStatus.ReadyPayout) {
+            revert PeriodNotReady(); // Scheduled (belum gilirannya) atau sudah Done
+        }
+
+        p.status = PeriodStatus.Done;
+        p.payoutRefHash = payoutRefHash;
+        emit PayoutMarked(circleId, periodNo, recipientOf(circleId, periodNo), payoutRefHash);
+
+        if (periodNo < c.memberCount) {
+            _periods[circleId][periodNo + 1].status = PeriodStatus.Running;
+        } else {
+            c.status = CircleStatus.Completed;
+        }
+    }
+
+    function _close(uint256 circleId, uint32 periodNo, Period storage p) private {
+        p.status = PeriodStatus.ReadyPayout;
+        emit PeriodClosed(circleId, periodNo, recipientOf(circleId, periodNo));
     }
 
     /// TODO(smart-contract, opsional dan terakhir): kuorum. propose(circleId, kind) dan vote(proposalId, yes).
     /// Keputusan operasional saja (menunda pencairan karena iuran belum lengkap, mengganti anggota yang mundur).
     /// Kuorum tidak boleh mengubah parameter terkunci (nominal, periode, penalti, urutan giliran).
     /// Suara dari anggota diteruskan backend setelah autentikasi (anggota tidak memegang dompet).
+    /// Jalur penutupan periode lewat kuorum akan memanggil _close tanpa syarat paidCount penuh.
 
     // ------------------------------------------------------------ fungsi baca
     function getCircle(uint256 circleId) external view returns (Circle memory) {
@@ -196,6 +251,10 @@ contract LingkarPay {
 
     function getPayment(uint256 circleId, uint32 periodNo, bytes32 memberId) external view returns (Payment memory) {
         return _payments[circleId][periodNo][memberId];
+    }
+
+    function getPenalty(uint256 circleId, uint32 periodNo, bytes32 memberId) external view returns (Penalty memory) {
+        return _penalties[circleId][periodNo][memberId];
     }
 
     /// Tenggat periode = waktu mulai + periodNo * periodDays hari.

@@ -58,8 +58,8 @@ Hardhat 3 mendukung Node 22 (min. 22.10) dan 24; Node 23 menghasilkan peringatan
 
 | File | Isi | Status |
 |---|---|---|
-| `contracts/LingkarPay.sol` | Struct, event, error, kontrol akses operator, `createCircle`, `addMember`, `startCircle`, `recordPayment`, fungsi baca, `dueDate`, `recipientOf`, `penaltyDue` | Inti ada |
-| `test/LingkarPay.test.ts` | 5 tes dasar + daftar `it.todo` | Kerangka |
+| `contracts/LingkarPay.sol` | Struct, event, error, kontrol akses operator, `createCircle`, `addMember`, `startCircle`, `recordPayment`, fungsi baca, `dueDate`, `recipientOf`, `penaltyDue` | Lengkap kecuali kuorum |
+| `test/LingkarPay.test.ts` | Tes kelompok, pembayaran, penutupan periode, pencairan, dan penalti; kuorum masih `it.todo` | Ada |
 | `ignition/modules/LingkarPay.ts` | Modul deploy (Ignition) | Ada |
 | `scripts/new-account.ts` | Membuat akun testnet khusus; private key ke `.secrets/` (tidak dicetak) | Ada |
 | `scripts/export-deployment.ts` | Mengekspor alamat dan ABI ke `deployments/` | Ada (verifikasi path setelah deploy pertama) |
@@ -77,14 +77,20 @@ npm run export:sepolia                           # tulis deployments/sepolia.jso
 ```
 Akun yang sama harus dipakai worker (`OPERATOR_PRIVATE_KEY` di `apps/api/.env`), karena akun deploy menjadi `operator`.
 
-### Yang menjadi pekerjaan jalur ini (TODO)
-Cari `TODO(smart-contract)` di `LingkarPay.sol`:
-1. `applyPenalty`: denda keterlambatan seragam, sekali per anggota per periode (rumus sama dengan `penaltyDue`).
-2. `closePeriod`: syarat semua lunas atau kuorum; status `ReadyPayout`; penerima ditentukan jadwal.
-3. `markPayout`: simpan `payoutRefHash`, periode `Done`, buka periode berikutnya, kelompok `Completed` di periode terakhir.
-4. Kuorum `propose`/`vote` (opsional, terakhir).
-5. Tes untuk semua skenario di bagian "Struktur yang disarankan", deploy ke Sepolia, simpan `deployments/sepolia.json`.
-6. Keputusan desain: apakah `markPayout` menutup periode sendiri (supaya worker tidak perlu memanggil `closePeriod` lebih dulu)? Backend hanya punya job `markPayout`. Putuskan bersama jalur payment gateway.
+### Status tahapan
+| Tahap | Pekerjaan | Status |
+|---|---|---|
+| T0 | Lingkungan dan kompilasi kerangka | Selesai: kompilasi sukses dan 5 tes dasar hijau (9 Nov) |
+| T1 | `closePeriod` dan `markPayout` + tes | Ditulis, menunggu `npm test` |
+| T2 | `applyPenalty` (denda terutang, audit) + tes | Ditulis, menunggu `npm test` |
+| T3 | Tes skenario proposal Tabel 19 | Ditulis, menunggu `npm test` |
+| T4 | Deploy ke Sepolia, ekspor alamat dan ABI | Belum |
+| T5 | Worker chain terhadap node lokal | Belum (kerangka `worker.example.ts` sudah disesuaikan) |
+| T6 | Uji ujung ke ujung di Sepolia | Belum |
+| T7 | Kuorum `propose`/`vote` (opsional) | Belum; `it.todo` |
+| T8 | Dokumentasi | Sebagian |
+
+Keputusan desain yang sudah diterapkan: `markPayout` menutup periode sendiri (butuh semua iuran tercatat on-chain), `applyPenalty` mencatat denda terutang tanpa memindahkan uang, periode berikutnya dibuka di `markPayout`.
 
 ### Konvensi data
 `memberId` (bytes32) = `memberRef` samaran dari backend diubah dengan `stringToHex(ref, { size: 32 })` (viem). Nominal dalam rupiah bulat (`uint256`). `circleId` on-chain berbeda dari `circleId` database; hubungannya disimpan backend di `circles.chain_circle_id` lewat `markCircleCreated`.

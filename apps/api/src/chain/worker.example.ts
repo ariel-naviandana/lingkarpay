@@ -100,9 +100,9 @@ async function handle(job: ChainJob): Promise<void> {
     case "markPayout": {
       const p = job.payload as MarkPayoutPayload;
       if (p.circleChainId === null) throw new Error("circleChainId kosong (kelompok belum on-chain)");
-      // TODO(smart-contract): backend hanya mengirim job markPayout. Tutup periode dulu (closePeriod),
-      // atau ubah contract agar markPayout menutup periode sendiri. Lihat contracts/README.md.
-      await send("closePeriod", [BigInt(p.circleChainId), p.periodNo]);
+      // Keputusan desain 1: markPayout menutup periode sendiri (butuh semua iuran sudah tercatat on-chain).
+      // Bila ada job recordPayment yang masih diulang, contract menolak (PeriodNotComplete), job gagal
+      // dan diulang otomatis dengan jeda, jadi akhirnya konsisten.
       const { hash } = await send("markPayout", [BigInt(p.circleChainId), p.periodNo, p.payoutRefHash as Hex]);
       await markJobConfirmed(job.id, hash);
       return;
