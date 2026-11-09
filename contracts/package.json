@@ -3,16 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Smart contract LingkarPay (kerangka awal). Versi paket mengikuti hasil `npx hardhat --init`.",
+  "description": "Smart contract LingkarPay (Hardhat 3, node:test, viem). Versi paket mengikuti hasil `npx hardhat --init` (Hardhat 3.21.2).",
   "scripts": {
-    "compile": "hardhat compile",
-    "test": "hardhat test",
-    "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia"
+    "build": "hardhat build",
+    "test": "hardhat test nodejs",
+    "typecheck": "hardhat build && tsc --noEmit",
+    "deploy:local": "hardhat ignition deploy ignition/modules/LingkarPay.ts",
+    "deploy:sepolia": "hardhat ignition deploy --network sepolia ignition/modules/LingkarPay.ts",
+    "export:sepolia": "hardhat run scripts/export-deployment.ts"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox-viem": "^5.0.0",
-    "hardhat": "^3.0.0",
-    "typescript": "~5.8.0",
-    "viem": "^2.0.0"
+    "@nomicfoundation/hardhat-ignition": "^3.1.9",
+    "@nomicfoundation/hardhat-toolbox-viem": "^5.0.7",
+    "@types/node": "^22.20.5",
+    "hardhat": "^3.21.2",
+    "typescript": "~6.0.3",
+    "viem": "^2.57.17"
   }
 }

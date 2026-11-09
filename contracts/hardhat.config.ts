@@ -1,17 +1,27 @@
-// KERANGKA konfigurasi Hardhat 3. Bila berbeda dengan hasil `npx hardhat --init`, ikuti hasil init.
 import hardhatToolboxViemPlugin from "@nomicfoundation/hardhat-toolbox-viem";
 import { configVariable, defineConfig } from "hardhat/config";
 
+// Mengikuti templat `npx hardhat --init` (Hardhat 3.21.2). Rahasia TIDAK ditulis di sini:
+// SEPOLIA_RPC_URL dan SEPOLIA_PRIVATE_KEY dibaca dari variabel environment atau keystore Hardhat
+// (`npx hardhat keystore set SEPOLIA_PRIVATE_KEY`). Hardhat tidak membaca file .env secara otomatis.
 export default defineConfig({
   plugins: [hardhatToolboxViemPlugin],
-  solidity: { profiles: { default: { version: "0.8.28" } } },
+  solidity: {
+    profiles: {
+      default: { version: "0.8.34" },
+      production: {
+        version: "0.8.34",
+        settings: { optimizer: { enabled: true, runs: 200 } },
+      },
+    },
+  },
   networks: {
-    // Rahasia dibaca dari environment/keystore Hardhat, tidak pernah ditulis di sini.
+    hardhatMainnet: { type: "edr-simulated", chainType: "l1" },
     sepolia: {
       type: "http",
       chainType: "l1",
       url: configVariable("SEPOLIA_RPC_URL"),
-      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")], // akun testnet khusus, bukan akun pribadi
+      accounts: [configVariable("SEPOLIA_PRIVATE_KEY")], // akun testnet khusus = operator contract
     },
   },
 });

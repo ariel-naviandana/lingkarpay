@@ -46,15 +46,36 @@ contracts/
 ```
 Skenario tes yang diminta proposal (Tabel 19): pencatatan oleh non-operator ditolak, pencatatan dua kali ditolak, pembayaran lewat tenggat kena penalti, penutupan periode saat iuran belum lengkap tanpa kuorum ditolak, penerima sesuai urutan terkunci, perubahan parameter setelah mulai ditolak, kuorum tidak tercapai tidak berlaku.
 
-## Kerangka awal (sudah disiapkan)
-Folder ini berisi kerangka supaya jalur smart contract punya titik mulai. **Belum dikompilasi dan belum diuji.** Versi paket dan bentuk `hardhat.config.ts` ditebak dari dokumentasi Hardhat 3; jalankan `npx hardhat --init` di folder kosong, bandingkan hasilnya, lalu sesuaikan.
+## Kerangka awal (sudah disesuaikan dengan Hardhat 3.21.2)
+Dibuat dari hasil `npx hardhat --init` (templat `node-test-runner-viem`). **Belum dikompilasi di komputer pengembang.** Cara menjalankan (Windows, dari folder `contracts`):
+```powershell
+cd C:\coding\lingkarpay\contracts
+npm install
+npm run build        # kompilasi Solidity (compiler 0.8.34 diunduh pertama kali)
+npm test             # 5 tes dasar harus hijau; sisanya it.todo
+```
+Hardhat 3 mendukung Node 22 (min. 22.10) dan 24; Node 23 menghasilkan peringatan `EBADENGINE` pada beberapa dependensi. Bila ada masalah aneh, pindah ke Node 22 LTS (mis. dengan nvm-windows).
 
 | File | Isi | Status |
 |---|---|---|
 | `contracts/LingkarPay.sol` | Struct, event, error, kontrol akses operator, `createCircle`, `addMember`, `startCircle`, `recordPayment`, fungsi baca, `dueDate`, `recipientOf`, `penaltyDue` | Inti ada |
-| `test/LingkarPay.test.ts` | 4 tes dasar (urutan anggota, non-operator, pencatatan ganda, parameter terkunci) + daftar `it.todo` | Kerangka |
-| `scripts/deploy.ts` | Deploy dan simpan alamat + ABI ke `deployments/` | Kerangka |
-| `hardhat.config.ts`, `package.json`, `.env.example` | Konfigurasi Sepolia (rahasia dari environment) | Kerangka |
+| `test/LingkarPay.test.ts` | 5 tes dasar + daftar `it.todo` | Kerangka |
+| `ignition/modules/LingkarPay.ts` | Modul deploy (Ignition) | Ada |
+| `scripts/new-account.ts` | Membuat akun testnet khusus; private key ke `.secrets/` (tidak dicetak) | Ada |
+| `scripts/export-deployment.ts` | Mengekspor alamat dan ABI ke `deployments/` | Ada (verifikasi path setelah deploy pertama) |
+| `hardhat.config.ts`, `package.json`, `tsconfig.json` | Mengikuti templat Hardhat 3.21.2 | Ada |
+
+### Rahasia dan deploy ke Sepolia
+Hardhat tidak membaca `.env`. Variabel konfigurasi `SEPOLIA_RPC_URL` dan `SEPOLIA_PRIVATE_KEY` diisi lewat keystore Hardhat (disarankan) atau variabel environment:
+```powershell
+npx hardhat run scripts/new-account.ts          # buat akun testnet; catat ALAMATNYA
+# minta ETH Sepolia ke alamat itu lewat faucet
+npx hardhat keystore set SEPOLIA_RPC_URL         # tempel URL RPC (Alchemy/Infura)
+npx hardhat keystore set SEPOLIA_PRIVATE_KEY     # tempel isi .secrets/operator.key
+npm run deploy:sepolia
+npm run export:sepolia                           # tulis deployments/sepolia.json dan ABI
+```
+Akun yang sama harus dipakai worker (`OPERATOR_PRIVATE_KEY` di `apps/api/.env`), karena akun deploy menjadi `operator`.
 
 ### Yang menjadi pekerjaan jalur ini (TODO)
 Cari `TODO(smart-contract)` di `LingkarPay.sol`:
