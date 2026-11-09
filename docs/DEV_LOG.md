@@ -38,6 +38,9 @@ Temuan teknis: Expire API menandai sukses dengan `status_code` 407 ("Success, tr
 ## 2026-11-08 — Kerangka awal untuk jalur lain
 Jalur payment gateway menyiapkan kerangka kode agar jalur lain punya bayangan dan titik mulai: `contracts/` (contract inti + tes + deploy), `apps/api/src/chain/worker.example.ts` (worker viem), dan `apps/web/` (Vite + React: login, dashboard, detail kelompok, tombol bayar Snap, portal verifikasi). Sengaja berhenti di bagian dasar: fungsi rumit (penalti, penutupan periode, pencairan, kuorum), idempotensi worker, dan halaman lanjutan ditandai `TODO(smart-contract)` / `TODO(frontend)` sebagai pekerjaan jalur masing-masing. Semuanya belum dikompilasi atau dijalankan.
 
+## 2026-11-09 — Keputusan desain contract disepakati; kontribusi smart contract
+Lima keputusan desain contract disepakati (lihat `contracts/README.md`): `markPayout` menutup periode sendiri; `applyPenalty` mencatat denda terutang sebagai audit; kuorum terakhir dan opsional; periode berikutnya dibuka di `markPayout`; worker idempoten. Jalur smart contract belum dimulai oleh anggota lain, sehingga pengerjaan dimulai dari tahap T0 (lingkungan dan kompilasi kerangka) oleh jalur payment gateway, dengan pemilik jalur tetap dilibatkan agar kontribusi dan pemahaman tetap terbagi.
+
 ## Template entri
 ```
 ## YYYY-MM-DD — <jalur>

@@ -67,3 +67,15 @@ Cari `TODO(smart-contract)` di `LingkarPay.sol`:
 
 ### Konvensi data
 `memberId` (bytes32) = `memberRef` samaran dari backend diubah dengan `stringToHex(ref, { size: 32 })` (viem). Nominal dalam rupiah bulat (`uint256`). `circleId` on-chain berbeda dari `circleId` database; hubungannya disimpan backend di `circles.chain_circle_id` lewat `markCircleCreated`.
+
+## Keputusan desain (disepakati 9 November 2026)
+| # | Keputusan |
+|---|---|
+| 1 | `markPayout` menutup periode sendiri bila masih `Running` dan semua iuran lunas. Worker cukup memanggil satu fungsi. `closePeriod` tetap ada untuk jalur kuorum. |
+| 2 | `applyPenalty` mencatat denda yang *terutang* (sekali per anggota per periode, boleh dipanggil siapa pun setelah tenggat) sebagai catatan audit, dengan rumus yang sama dengan backend. Contract tidak memindahkan uang. |
+| 3 | Kuorum (`propose`/`vote`) dikerjakan terakhir dan opsional: hanya "tunda pencairan" dan "ganti anggota"; suara diteruskan backend. |
+| 4 | Periode berikutnya dibuka di dalam `markPayout`, seperti yang sudah dikerjakan backend. |
+| 5 | Worker idempoten: simpan id kelompok on-chain begitu event terbaca, dan cek sebelum membuat kelompok ulang bila worker restart. |
+
+## Rencana tahapan
+T0 siapkan lingkungan dan kompilasi kerangka; T1 `closePeriod` + `markPayout`; T2 `applyPenalty`; T3 tes sesuai proposal Tabel 19; T4 deploy Sepolia; T5 worker terhadap node lokal; T6 uji ujung ke ujung di Sepolia; T7 kuorum (opsional); T8 dokumentasi. Target: T5 dapat ditunjukkan sebelum progress report (sebelum 24 November), pembekuan 25 November.
