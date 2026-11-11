@@ -4,7 +4,9 @@
 import fs from "node:fs";
 
 const chainId = process.env.CHAIN_ID ?? "11155111"; // Sepolia
-const dir = `ignition/deployments/chain-${chainId}`;
+// Deploy final memakai --deployment-id sepolia-v2 (deploy lama tetap di ignition/deployments/chain-11155111).
+const deploymentId = process.env.DEPLOYMENT_ID ?? (chainId === "11155111" ? "sepolia-v2" : `chain-${chainId}`);
+const dir = `ignition/deployments/${deploymentId}`;
 
 const addresses = JSON.parse(fs.readFileSync(`${dir}/deployed_addresses.json`, "utf8")) as Record<string, string>;
 const address = addresses["LingkarPayModule#LingkarPay"];

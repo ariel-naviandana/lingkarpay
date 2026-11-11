@@ -9,7 +9,7 @@
     "test": "hardhat test nodejs",
     "typecheck": "hardhat build && tsc --noEmit",
     "deploy:local": "hardhat ignition deploy --network localhost ignition/modules/LingkarPay.ts",
-    "deploy:sepolia": "hardhat ignition deploy --network sepolia ignition/modules/LingkarPay.ts",
+    "deploy:sepolia": "hardhat ignition deploy --network sepolia --deployment-id sepolia-v2 ignition/modules/LingkarPay.ts",
     "export:sepolia": "hardhat run scripts/export-deployment.ts",
     "node": "hardhat node",
     "inspect": "hardhat run scripts/inspect-circle.ts"

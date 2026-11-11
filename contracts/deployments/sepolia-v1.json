@@ -1,0 +1,8 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "address": "0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0",
+  "exportedAt": "2026-11-11T07:32:53.295Z",
+  "abiPath": "contracts/deployments/LingkarPay.v1.abi.json",
+  "version": "v1 (sebelum externalRef dan kuorum)"
+}
