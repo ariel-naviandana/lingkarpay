@@ -18,5 +18,13 @@ export async function refreshPeriodReadiness(db: Db, periodId: number): Promise<
           = (SELECT c.member_count FROM circles c WHERE c.id = p.circle_id)`,
     [periodId],
   );
-  return (rowCount ?? 0) > 0;
+  const changed = (rowCount ?? 0) > 0;
+  if (changed) {
+    // Semua sudah lunas: usulan kuorum yang masih terbuka tidak diperlukan lagi.
+    await db.query(
+      "UPDATE proposals SET status = 'expired', updated_at = now() WHERE period_id = $1 AND status = 'open'",
+      [periodId],
+    );
+  }
+  return changed;
 }

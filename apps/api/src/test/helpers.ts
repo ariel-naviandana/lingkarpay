@@ -65,16 +65,17 @@ export async function boot() {
   const reconciliation = await import("../services/reconciliation.js");
   const circles = await import("../services/circles.js");
   const orders = await import("../services/orders.js");
+  const proposals = await import("../services/proposals.js");
   await runMigrations(pool);
   const app = await buildApp();
   await app.ready();
-  return { app, pool, checkout, midtrans, outbox, payouts, reconciliation, circles, orders };
+  return { app, pool, checkout, midtrans, outbox, payouts, reconciliation, circles, orders, proposals };
 }
 
 export async function resetDb(pool: Pool): Promise<void> {
   await pool.query(
     `TRUNCATE users, sessions, circles, members, periods, orders, order_status_history,
-              webhook_events, payouts, chain_jobs, chain_transactions
+              webhook_events, payouts, chain_jobs, chain_transactions, proposals, proposal_votes
      RESTART IDENTITY CASCADE`,
   );
 }

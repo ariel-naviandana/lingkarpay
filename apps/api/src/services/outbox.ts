@@ -16,7 +16,13 @@ import { transitionOrder } from "./orderStatus.js";
 export const MAX_JOB_ATTEMPTS = 5;
 const STALE_SENT_SECONDS = 300;
 
-export type JobKind = "createCircle" | "recordPayment" | "markPayout";
+export type JobKind =
+  | "createCircle"
+  | "recordPayment"
+  | "markPayout"
+  | "proposeClosePeriod"
+  | "castVote"
+  | "executeProposal";
 
 export interface CreateCirclePayload {
   circleId: number;
@@ -51,13 +57,45 @@ export interface MarkPayoutPayload {
   amount: number;
 }
 
+export interface ProposeClosePeriodPayload {
+  circleId: number;
+  circleChainId: string | null;
+  proposalId: number;
+  periodNo: number;
+}
+
+export interface CastVotePayload {
+  circleId: number;
+  circleChainId: string | null;
+  proposalId: number;
+  /** Diisi saat job diambil (claimJobs) dari proposals.chain_proposal_id. */
+  chainProposalId: string | null;
+  memberRef: string;
+  approve: boolean;
+}
+
+export interface ExecuteProposalPayload {
+  circleId: number;
+  circleChainId: string | null;
+  proposalId: number;
+  chainProposalId: string | null;
+}
+
 export interface ChainJob {
   id: number;
   kind: JobKind;
   orderId: number | null;
   payoutId: number | null;
   circleId: number | null;
-  payload: CreateCirclePayload | RecordPaymentPayload | MarkPayoutPayload;
+  proposalId: number | null;
+  voteId: number | null;
+  payload:
+    | CreateCirclePayload
+    | RecordPaymentPayload
+    | MarkPayoutPayload
+    | ProposeClosePeriodPayload
+    | CastVotePayload
+    | ExecuteProposalPayload;
   attempts: number;
 }
 
@@ -155,11 +193,96 @@ export async function enqueueMarkPayout(
   return ins.rows[0]?.id ?? null;
 }
 
+/** Dipanggil saat usulan tutup periode dibuat. Satu usulan, satu job. */
+export async function enqueueProposeClosePeriod(db: Db, proposalId: number): Promise<number | null> {
+  const { rows } = await db.query<{ circle_id: number; period_no: number }>(
+    `SELECT pr.circle_id, p.period_no
+       FROM proposals pr JOIN periods p ON p.id = pr.period_id
+      WHERE pr.id = $1`,
+    [proposalId],
+  );
+  const r = rows[0];
+  if (!r) throw notFound("Usulan");
+  const payload: ProposeClosePeriodPayload = {
+    circleId: r.circle_id,
+    circleChainId: null,
+    proposalId,
+    periodNo: r.period_no,
+  };
+  const ins = await db.query<{ id: number }>(
+    `INSERT INTO chain_jobs (kind, proposal_id, payload)
+     VALUES ('proposeClosePeriod', $1, $2)
+     ON CONFLICT (kind, proposal_id) WHERE proposal_id IS NOT NULL DO NOTHING
+     RETURNING id`,
+    [proposalId, JSON.stringify(payload)],
+  );
+  return ins.rows[0]?.id ?? null;
+}
+
+/** Dipanggil saat anggota memberi suara. Satu suara, satu job. Payload hanya ID samaran. */
+export async function enqueueCastVote(db: Db, voteId: number): Promise<number | null> {
+  const { rows } = await db.query<{
+    proposal_id: number;
+    circle_id: number;
+    member_ref: string;
+    approve: boolean;
+  }>(
+    `SELECT v.proposal_id, pr.circle_id, m.member_ref, v.approve
+       FROM proposal_votes v
+       JOIN proposals pr ON pr.id = v.proposal_id
+       JOIN members m ON m.id = v.member_id
+      WHERE v.id = $1`,
+    [voteId],
+  );
+  const r = rows[0];
+  if (!r) throw notFound("Suara");
+  const payload: CastVotePayload = {
+    circleId: r.circle_id,
+    circleChainId: null,
+    proposalId: r.proposal_id,
+    chainProposalId: null,
+    memberRef: r.member_ref,
+    approve: r.approve,
+  };
+  const ins = await db.query<{ id: number }>(
+    `INSERT INTO chain_jobs (kind, vote_id, payload)
+     VALUES ('castVote', $1, $2)
+     ON CONFLICT (kind, vote_id) WHERE vote_id IS NOT NULL DO NOTHING
+     RETURNING id`,
+    [voteId, JSON.stringify(payload)],
+  );
+  return ins.rows[0]?.id ?? null;
+}
+
+/** Dipanggil saat usulan disetujui kuorum. Satu usulan, satu job. */
+export async function enqueueExecuteProposal(db: Db, proposalId: number): Promise<number | null> {
+  const { rows } = await db.query<{ circle_id: number }>("SELECT circle_id FROM proposals WHERE id = $1", [
+    proposalId,
+  ]);
+  const r = rows[0];
+  if (!r) throw notFound("Usulan");
+  const payload: ExecuteProposalPayload = {
+    circleId: r.circle_id,
+    circleChainId: null,
+    proposalId,
+    chainProposalId: null,
+  };
+  const ins = await db.query<{ id: number }>(
+    `INSERT INTO chain_jobs (kind, proposal_id, payload)
+     VALUES ('executeProposal', $1, $2)
+     ON CONFLICT (kind, proposal_id) WHERE proposal_id IS NOT NULL DO NOTHING
+     RETURNING id`,
+    [proposalId, JSON.stringify(payload)],
+  );
+  return ins.rows[0]?.id ?? null;
+}
+
 /**
  * Untuk modul chain: ambil job yang siap diproses dan tandai "sent".
  * - Aman dipanggil paralel (FOR UPDATE SKIP LOCKED).
- * - createCircle didahulukan. recordPayment/markPayout hanya diberikan bila kelompoknya sudah
- *   on-chain (circles.chain_circle_id terisi), dan payload.circleChainId diisi nilai terbaru.
+ * - createCircle didahulukan. Job lain hanya diberikan bila kelompoknya sudah on-chain
+ *   (circles.chain_circle_id terisi), dan payload.circleChainId diisi nilai terbaru.
+ * - castVote/executeProposal hanya diberikan bila usulannya sudah on-chain (proposals.chain_proposal_id).
  * - Job "sent" yang macet > 5 menit (worker mati) diambil ulang.
  */
 export async function claimJobs(limit = 10): Promise<ChainJob[]> {
@@ -169,6 +292,8 @@ export async function claimJobs(limit = 10): Promise<ChainJob[]> {
     order_id: number | null;
     payout_id: number | null;
     circle_id: number | null;
+    proposal_id: number | null;
+    vote_id: number | null;
     payload: ChainJob["payload"];
     attempts: number;
   }>(
@@ -183,10 +308,14 @@ export async function claimJobs(limit = 10): Promise<ChainJob[]> {
                 OR EXISTS (SELECT 1 FROM circles c
                             WHERE c.id = (j.payload->>'circleId')::int
                               AND c.chain_circle_id IS NOT NULL))
+           AND (j.kind NOT IN ('castVote', 'executeProposal')
+                OR EXISTS (SELECT 1 FROM proposals pr
+                            WHERE pr.id = (j.payload->>'proposalId')::int
+                              AND pr.chain_proposal_id IS NOT NULL))
          ORDER BY CASE j.kind WHEN 'createCircle' THEN 0 ELSE 1 END, j.id
          LIMIT $1
          FOR UPDATE OF j SKIP LOCKED)
-      RETURNING id, kind, order_id, payout_id, circle_id, payload, attempts`,
+      RETURNING id, kind, order_id, payout_id, circle_id, proposal_id, vote_id, payload, attempts`,
     [limit, STALE_SENT_SECONDS],
   );
   if (rows.length === 0) return [];
@@ -203,10 +332,29 @@ export async function claimJobs(limit = 10): Promise<ChainJob[]> {
     for (const c of cr.rows) chainIds.set(c.id, c.chain_circle_id);
   }
 
+  const proposalIds = [
+    ...new Set(
+      rows
+        .filter((r) => r.kind === "castVote" || r.kind === "executeProposal")
+        .map((r) => Number((r.payload as { proposalId?: number }).proposalId)),
+    ),
+  ].filter((n) => Number.isFinite(n));
+  const chainProposalIds = new Map<number, string | null>();
+  if (proposalIds.length > 0) {
+    const pr = await pool.query<{ id: number; chain_proposal_id: string | null }>(
+      "SELECT id, chain_proposal_id FROM proposals WHERE id = ANY($1::int[])",
+      [proposalIds],
+    );
+    for (const p of pr.rows) chainProposalIds.set(p.id, p.chain_proposal_id);
+  }
+
   return rows.map((r) => {
     const payload = { ...(r.payload as unknown as Record<string, unknown>) };
     if (r.kind !== "createCircle") {
       payload.circleChainId = chainIds.get(Number(payload.circleId)) ?? null;
+    }
+    if (r.kind === "castVote" || r.kind === "executeProposal") {
+      payload.chainProposalId = chainProposalIds.get(Number(payload.proposalId)) ?? null;
     }
     return {
       id: r.id,
@@ -214,6 +362,8 @@ export async function claimJobs(limit = 10): Promise<ChainJob[]> {
       orderId: r.order_id,
       payoutId: r.payout_id,
       circleId: r.circle_id,
+      proposalId: r.proposal_id,
+      voteId: r.vote_id,
       payload: payload as unknown as ChainJob["payload"],
       attempts: r.attempts,
     };
@@ -241,6 +391,13 @@ export async function markJobConfirmed(jobId: number, txHash: string): Promise<v
       throw new AppError(
         "USE_MARK_CIRCLE_CREATED",
         "Job createCircle dikonfirmasi lewat markCircleCreated (butuh id kelompok on-chain)",
+        400,
+      );
+    }
+    if (job.kind === "proposeClosePeriod") {
+      throw new AppError(
+        "USE_MARK_PROPOSAL_CREATED",
+        "Job proposeClosePeriod dikonfirmasi lewat markProposalCreated (butuh id usulan on-chain)",
         400,
       );
     }
@@ -298,6 +455,48 @@ export async function markCircleCreated(
       [jobId, txHash, job.attempts],
     );
     await client.query("UPDATE circles SET chain_circle_id = $2 WHERE id = $1", [job.circle_id, id]);
+  });
+}
+
+/**
+ * Usulan sudah dibuat di chain. Menyimpan id usulan on-chain ke proposals.chain_proposal_id
+ * (membuka job suara dan eksekusi usulan itu) dan mengonfirmasi job proposeClosePeriod. Idempoten.
+ */
+export async function markProposalCreated(
+  jobId: number,
+  chainProposalId: string,
+  txHash: string,
+): Promise<void> {
+  const id = chainProposalId.trim();
+  if (id.length === 0 || id.length > 100) {
+    throw new AppError("INVALID_CHAIN_PROPOSAL_ID", "chainProposalId tidak valid", 400);
+  }
+  await withTx(async (client) => {
+    const { rows } = await client.query<{
+      kind: JobKind;
+      proposal_id: number | null;
+      status: string;
+      attempts: number;
+    }>("SELECT kind, proposal_id, status, attempts FROM chain_jobs WHERE id = $1 FOR UPDATE", [jobId]);
+    const job = rows[0];
+    if (!job || job.kind !== "proposeClosePeriod" || job.proposal_id === null) {
+      throw notFound("Job proposeClosePeriod");
+    }
+    if (job.status === "confirmed") return;
+
+    await client.query(
+      "UPDATE chain_jobs SET status = 'confirmed', last_error = NULL, updated_at = now() WHERE id = $1",
+      [jobId],
+    );
+    await client.query(
+      `INSERT INTO chain_transactions (job_id, tx_hash, status, attempts, confirmed_at)
+       VALUES ($1, $2, 'confirmed', $3, now())`,
+      [jobId, txHash, job.attempts],
+    );
+    await client.query("UPDATE proposals SET chain_proposal_id = $2, updated_at = now() WHERE id = $1", [
+      job.proposal_id,
+      id,
+    ]);
   });
 }
 
