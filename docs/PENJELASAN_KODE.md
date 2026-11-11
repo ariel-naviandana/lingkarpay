@@ -164,8 +164,8 @@ Menjalankan alur nyata lewat API dan hanya meminta satu langkah manual (membayar
 ### 3.16 Smart contract (`contracts/contracts/LingkarPay.sol`)
 - **Peran:** aturan arisan dan catatan yang bisa diperiksa semua orang. **Tidak menyimpan uang**; rupiah tetap di gateway (arsitektur pilihan A).
 - **Akses:** hanya `operator` (akun backend) yang boleh mencatat; membaca dan `applyPenalty` boleh siapa pun.
-- **Fungsi:** `createCircle`, `addMember` (urutan giliran = urutan ditambahkan), `startCircle` (mengunci anggota dan parameter), `recordPayment` (satu iuran satu catatan, menandai terlambat), `applyPenalty` (mencatat denda terutang, sekali per anggota per periode, rumus sama dengan backend), `closePeriod`, `markPayout` (menutup periode sendiri, membuka periode berikutnya, menutup kelompok di periode terakhir).
-- **Aturan yang ditegakkan dan dites (28 test):** non-operator ditolak, pencatatan ganda ditolak, parameter terkunci setelah mulai, penerima sesuai urutan terkunci, penutupan hanya bila semua lunas, denda seragam.
+- **Fungsi:** `createCircle`, `addMember` (urutan giliran = urutan ditambahkan), `startCircle` (mengunci anggota dan parameter), `recordPayment` (satu iuran satu catatan, menandai terlambat), `applyPenalty` (mencatat denda terutang, sekali per anggota per periode, rumus sama dengan backend), `closePeriod`, `markPayout` (menutup periode sendiri, membuka periode berikutnya, menutup kelompok di periode terakhir), dan **kuorum**: `proposeClosePeriod` (tutup periode meski belum lengkap), `proposeReplaceMember` (ganti anggota yang mundur), `vote` (mayoritas mutlak, satu anggota satu suara), `executeProposal` (hanya untuk usulan yang disetujui; batas voting 3 hari, tidak mencapai kuorum berarti tidak berlaku).
+- **Aturan yang ditegakkan dan dites (37 test):** non-operator ditolak, pencatatan ganda ditolak, parameter terkunci setelah mulai, penerima sesuai urutan terkunci, penutupan hanya bila semua lunas, denda seragam.
 - **Data di chain:** hanya `memberId` (bytes32 dari ID samaran), hash referensi pembayaran (`refHash`), dan hash pencairan; tanpa data pribadi.
 
 ### 3.17 Worker chain (`apps/api/src/chain/worker.ts`)
@@ -216,7 +216,7 @@ Menjalankan alur nyata lewat API dan hanya meminta satu langkah manual (membayar
 | Apa peran AI? | Lihat `docs/AI_STATEMENT.md`: AI membantu merancang dan menulis draf; semua dijalankan dan diverifikasi sendiri; kesalahan AI yang ditemukan dicatat. |
 
 ## 7. Jujur soal batasan (jangan diklaim lebih)
-- **Contract dan worker sudah terbukti di Sepolia** (`docs/BUKTI_SEPOLIA.md`), tetapi kuorum (`propose`/`vote`) belum dikerjakan, dan worker belum idempoten untuk `createCircle` bila mati di tengah jalan.
+- **Contract dan worker sudah terbukti di Sepolia** (`docs/BUKTI_SEPOLIA.md`), tetapi contract yang ter-deploy adalah versi sebelum kuorum; kuorum dites (37 test) tetapi belum terhubung ke backend. Worker juga belum idempoten untuk `createCircle` bila mati di tengah jalan.
 - **Iris belum diuji** (butuh akun sandbox khusus). Pencairan memakai simulasi.
 - **Penalti keterlambatan** terbukti di tes otomatis, belum di transaksi sandbox sungguhan.
 - **Penalti di-snapshot** saat order dibuat (batasan yang diketahui).

@@ -81,13 +81,13 @@ Akun yang sama harus dipakai worker (`OPERATOR_PRIVATE_KEY` di `apps/api/.env`),
 | Tahap | Pekerjaan | Status |
 |---|---|---|
 | T0 | Lingkungan dan kompilasi kerangka | Selesai: kompilasi sukses dan 5 tes dasar hijau (9 Nov) |
-| T1 | `closePeriod` dan `markPayout` + tes | Ditulis, menunggu `npm test` |
-| T2 | `applyPenalty` (denda terutang, audit) + tes | Ditulis, menunggu `npm test` |
-| T3 | Tes skenario proposal Tabel 19 | Ditulis, menunggu `npm test` |
+| T1 | `closePeriod` dan `markPayout` + tes | Selesai, tes lulus |
+| T2 | `applyPenalty` (denda terutang, audit) + tes | Selesai, tes lulus |
+| T3 | Tes skenario proposal Tabel 19 | Selesai, tes lulus |
 | T4 | Deploy ke Sepolia, ekspor alamat dan ABI | Selesai (11 Nov): `0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0` di Sepolia, lihat `deployments/sepolia.json` |
 | T5 | Worker chain terhadap node lokal | Selesai dan terverifikasi (11 Nov): pembayaran Midtrans sandbox menjadi `ANCHORED`, `createCircle`/`recordPayment`/`markPayout` terkonfirmasi |
 | T6 | Uji end to end di Sepolia | Belum |
-| T7 | Kuorum (`proposeClosePeriod`, `proposeReplaceMember`, `vote`, `executeProposal`) | Ditulis, menunggu `npm test` |
+| T7 | Kuorum (`proposeClosePeriod`, `proposeReplaceMember`, `vote`, `executeProposal`) | Selesai: 37 test lulus (11 Nov). Belum ter-deploy di Sepolia dan belum terhubung ke backend |
 | T8 | Dokumentasi | Sebagian |
 
 Keputusan desain yang sudah diterapkan: `markPayout` menutup periode sendiri (butuh semua iuran tercatat on-chain), `applyPenalty` mencatat denda terutang tanpa memindahkan uang, periode berikutnya dibuka di `markPayout`.

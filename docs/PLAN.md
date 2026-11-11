@@ -57,7 +57,7 @@ Skenario pembayaran di Midtrans sandbox:
 - Keputusan bersama yang masih terbuka: apakah `markPayout` di contract menutup periode sendiri, atau worker memanggil `closePeriod` lebih dulu.
 
 ## Smart contract dan modul chain
-Terverifikasi end to end di Sepolia (11 Nov 2026): contract `0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0`, 28 test contract lulus, worker (`apps/api/src/chain/worker.ts`) mencatat `createCircle`, `recordPayment`, dan `markPayout`, order menjadi `ANCHORED`. Rincian dan hash transaksi: `docs/BUKTI_SEPOLIA.md`. Yang masih tersisa: kuorum (`propose`/`vote`, opsional), idempotensi `createCircle` pada worker, dan verifikasi contract di Etherscan (opsional).
+Terverifikasi end to end di Sepolia (11 Nov 2026): contract `0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0`, 37 test contract lulus (termasuk kuorum), worker (`apps/api/src/chain/worker.ts`) mencatat `createCircle`, `recordPayment`, dan `markPayout`, order menjadi `ANCHORED`. Rincian dan hash transaksi: `docs/BUKTI_SEPOLIA.md`. Kuorum (usul tutup periode dan ganti anggota, mayoritas mutlak, batas voting 3 hari) sudah ada di contract dan dites, tetapi contract yang ter-deploy di Sepolia adalah versi sebelum kuorum dan kuorum belum terhubung ke backend. Yang masih tersisa: deploy ulang untuk memuat kuorum (opsional), idempotensi `createCircle` pada worker, dan verifikasi contract di Etherscan (opsional).
 
 ## Frontend (kerangka, belum dijalankan)
 `apps/web/` (Vite + React) disiapkan sebagai kerangka; halaman lanjutan ditandai `TODO(frontend)` sebagai pekerjaan jalur frontend.
