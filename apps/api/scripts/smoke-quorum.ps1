@@ -124,7 +124,7 @@ Check "dana pencairan = iuran A tanpa biaya admin" ($p.amount -eq 10000) "amount
 $d = Api GET "/circles/$cid" $null $a.token
 Check "periode 1 selesai" ((Period-Status $d $pid1) -eq "done") ""
 $rec = Api GET "/reports/reconciliation?circleId=$cid" $null $a.token
-Check "rekonsiliasi tanpa masalah" ($rec.issues -eq 0 -or @($rec.flags).Count -eq 0) ("issues=" + $rec.issues)
+Check "rekonsiliasi tanpa masalah" ($rec.summary.issues -eq 0) ("issues=" + $rec.summary.issues)
 
 # ---------------- Chain (opsional) ----------------
 if ($WaitChain) {
