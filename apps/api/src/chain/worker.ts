@@ -18,9 +18,13 @@ import {
   markCircleCreated,
   markJobConfirmed,
   markJobFailed,
+  markProposalCreated,
+  type CastVotePayload,
   type ChainJob,
   type CreateCirclePayload,
+  type ExecuteProposalPayload,
   type MarkPayoutPayload,
+  type ProposeClosePeriodPayload,
   type RecordPaymentPayload,
 } from "../services/outbox.js";
 
@@ -42,11 +46,25 @@ const abi = parseAbi([
   "event CircleStarted(uint256 indexed circleId, uint64 startTime)",
   "event PaymentRecorded(uint256 indexed circleId, uint32 indexed periodNo, bytes32 indexed memberId, bytes32 refHash, uint64 paidAt, bool late)",
   "event PayoutMarked(uint256 indexed circleId, uint32 indexed periodNo, bytes32 recipient, bytes32 payoutRefHash)",
+  // Kuorum
+  "function proposeClosePeriod(uint256 circleId, uint32 periodNo) returns (uint256)",
+  "function vote(uint256 proposalId, bytes32 memberId, bool approve)",
+  "function executeProposal(uint256 proposalId)",
+  "function proposalOfPeriod(uint256 circleId, uint32 periodNo) view returns (uint256)",
+  "function getProposal(uint256 proposalId) view returns ((uint256 circleId, uint8 kind, uint8 status, uint32 periodNo, uint32 approvals, uint32 rejections, uint64 deadline, bytes32 oldMember, bytes32 newMember))",
+  "function hasVoted(uint256 proposalId, bytes32 memberId) view returns (bool)",
+  "event ProposalCreated(uint256 indexed proposalId, uint256 indexed circleId, uint8 kind, uint32 periodNo, bytes32 oldMember, bytes32 newMember, uint64 deadline)",
+  "event Voted(uint256 indexed proposalId, bytes32 indexed memberId, bool approve)",
+  "event ProposalExecuted(uint256 indexed proposalId)",
 ]);
 
 // Status di contract (enum): CircleStatus None=0 Draft=1 Active=2 Completed=3; PeriodStatus Scheduled=0 Running=1 ReadyPayout=2 Done=3
 const CIRCLE_DRAFT = 1;
 const PERIOD_DONE = 3;
+// ProposalStatus: None=0 Open=1 Approved=2 Rejected=3 Executed=4
+const PROPOSAL_OPEN = 1;
+const PROPOSAL_APPROVED = 2;
+const PROPOSAL_EXECUTED = 4;
 
 const chain = config.CHAIN_NAME === "hardhat" ? hardhat : sepolia;
 const RPC_URL = config.CHAIN_RPC_URL;
@@ -73,7 +91,7 @@ const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 const LOG_CHUNK = 10n;
 const LOOKBACK_BLOCKS = 300n;
 async function findRecentTx(
-  eventName: "CircleStarted" | "PaymentRecorded" | "PayoutMarked",
+  eventName: "CircleStarted" | "PaymentRecorded" | "PayoutMarked" | "ProposalCreated" | "Voted" | "ProposalExecuted",
   args: Record<string, unknown>,
 ): Promise<Hex | null> {
   const latest = await publicClient.getBlockNumber();
@@ -96,7 +114,19 @@ async function findRecentTx(
 }
 
 /** Kirim satu transaksi dan tunggu receipt. Dikirim berurutan sehingga nonce aman. */
-async function send(functionName: "createCircle" | "addMember" | "startCircle" | "recordPayment" | "closePeriod" | "markPayout", args: readonly unknown[]) {
+async function send(
+  functionName:
+    | "createCircle"
+    | "addMember"
+    | "startCircle"
+    | "recordPayment"
+    | "closePeriod"
+    | "markPayout"
+    | "proposeClosePeriod"
+    | "vote"
+    | "executeProposal",
+  args: readonly unknown[],
+) {
   const hash = await wallet.writeContract({ address: CONTRACT!, abi, functionName, args } as never);
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
   if (receipt.status !== "success") throw new Error(`Transaksi ${functionName} gagal (reverted): ${hash}`);
@@ -187,6 +217,80 @@ async function handle(job: ChainJob): Promise<void> {
       // markPayout menutup periode sendiri dan butuh semua iuran sudah tercatat on-chain. Bila masih ada job
       // recordPayment yang diulang, contract menolak (PeriodNotComplete); job diulang otomatis dengan jeda.
       const { hash } = await send("markPayout", [chainId, p.periodNo, p.payoutRefHash as Hex]);
+      await markJobConfirmed(job.id, hash);
+      return;
+    }
+
+    case "proposeClosePeriod": {
+      const p = job.payload as ProposeClosePeriodPayload;
+      if (p.circleChainId === null) throw new Error("circleChainId kosong (kelompok belum on-chain)");
+      const chainId = BigInt(p.circleChainId);
+
+      // Idempoten: backend hanya mengizinkan satu usulan terbuka per periode, jadi usulan yang masih berlaku
+      // di chain untuk periode ini adalah usulan ini (percobaan ulang setelah worker mati).
+      const existing = await publicClient.readContract({
+        address: CONTRACT!,
+        abi,
+        functionName: "proposalOfPeriod",
+        args: [chainId, p.periodNo],
+      });
+      if (existing !== 0n) {
+        const pr = await publicClient.readContract({ address: CONTRACT!, abi, functionName: "getProposal", args: [existing] });
+        const live = (pr.status === PROPOSAL_OPEN || pr.status === PROPOSAL_APPROVED) && pr.deadline > BigInt(Math.floor(Date.now() / 1000));
+        if (live) {
+          const hash = await findRecentTx("ProposalCreated", { proposalId: existing });
+          if (!hash) throw new Error("Usulan sudah ada di chain tetapi hash transaksinya tidak ditemukan; periksa di Etherscan");
+          await markProposalCreated(job.id, existing.toString(), hash);
+          return;
+        }
+      }
+
+      const created = await send("proposeClosePeriod", [chainId, p.periodNo]);
+      const logs = parseEventLogs({ abi, logs: created.receipt.logs, eventName: "ProposalCreated" });
+      const newId = logs[0]?.args.proposalId;
+      if (newId === undefined) throw new Error("Event ProposalCreated tidak ditemukan");
+      await markProposalCreated(job.id, newId.toString(), created.hash);
+      return;
+    }
+
+    case "castVote": {
+      const p = job.payload as CastVotePayload;
+      if (p.chainProposalId === null) throw new Error("chainProposalId kosong (usulan belum on-chain)");
+      const proposalId = BigInt(p.chainProposalId);
+      const memberId = toMemberId(p.memberRef);
+
+      // Sudah memilih (transaksi sebelumnya sebenarnya berhasil)? Perlakukan sebagai sukses.
+      const already = await publicClient.readContract({
+        address: CONTRACT!,
+        abi,
+        functionName: "hasVoted",
+        args: [proposalId, memberId],
+      });
+      if (already) {
+        const hash = await findRecentTx("Voted", { proposalId, memberId });
+        if (!hash) throw new Error("Suara sudah tercatat di chain tetapi hash transaksinya tidak ditemukan; periksa di Etherscan");
+        await markJobConfirmed(job.id, hash);
+        return;
+      }
+      const { hash } = await send("vote", [proposalId, memberId, p.approve]);
+      await markJobConfirmed(job.id, hash);
+      return;
+    }
+
+    case "executeProposal": {
+      const p = job.payload as ExecuteProposalPayload;
+      if (p.chainProposalId === null) throw new Error("chainProposalId kosong (usulan belum on-chain)");
+      const proposalId = BigInt(p.chainProposalId);
+
+      const pr = await publicClient.readContract({ address: CONTRACT!, abi, functionName: "getProposal", args: [proposalId] });
+      if (pr.status === PROPOSAL_EXECUTED) {
+        const hash = await findRecentTx("ProposalExecuted", { proposalId });
+        if (!hash) throw new Error("Usulan sudah dieksekusi di chain tetapi hash transaksinya tidak ditemukan; periksa di Etherscan");
+        await markJobConfirmed(job.id, hash);
+        return;
+      }
+      // Contract menolak (QuorumNotReached) bila suara belum tercatat semua; job diulang dengan jeda.
+      const { hash } = await send("executeProposal", [proposalId]);
       await markJobConfirmed(job.id, hash);
       return;
     }
