@@ -19,7 +19,8 @@ const Status = { Draft: 1, Active: 2, Completed: 3 } as const;
 const PeriodStatus = { Scheduled: 0, Running: 1, ReadyPayout: 2, Done: 3 } as const;
 
 describe("LingkarPay", async function () {
-  const { viem, networkHelpers } = await network.create();
+  // Jaringan simulasi dipaksa eksplisit: tes tidak boleh ikut ke Sepolia walau HARDHAT_NETWORK diset di terminal.
+  const { viem, networkHelpers } = await network.create({ network: "hardhatMainnet" });
 
   /** Kontrak dengan satu kelompok yang sudah berisi anggota tetapi belum dimulai. */
   async function deployDraft(memberCount = 2, penaltyPct = PENALTY_PCT) {
