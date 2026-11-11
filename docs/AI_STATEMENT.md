@@ -33,6 +33,7 @@ Claude (Anthropic) dipakai sebagai pendamping.
 - Worker awal "menyelesaikan" job jenis yang tidak dikenal tanpa error (tidak ada `default` pada `switch`), sehingga job terjebak berstatus `sent`. Diperbaiki: jenis job tidak dikenal gagal dengan pesan jelas.
 - Skrip `smoke-quorum.ps1` awal membaca `issues` dari tempat yang salah (seharusnya `summary.issues`); ditemukan saat meninjau skrip lama sebelum dijalankan.
 - Instruksi uji awal mengarahkan ke node lokal padahal `.env` pengembang menunjuk ke Sepolia dengan contract lama; ketidakcocokan versi contract dan worker ditemukan dari log dan diselesaikan dengan deploy final ke Sepolia.
+- Instruksi verifikasi Etherscan awal tidak menyebut bahwa Hardhat Ignition men-deploy dengan profil build `production` (optimizer aktif) sedangkan build lokal memakai `default`, sehingga `verify` gagal dengan `bytecode does not match`. Ditemukan dari pesan error, lalu dicocokkan dengan data build-info di komputer pengembang dan diselesaikan dengan `hardhat build --build-profile production`.
 
 ## Batasan yang diketahui
 - Klien Midtrans Iris (payout) ditulis dari dokumentasi dan belum diuji di sandbox.

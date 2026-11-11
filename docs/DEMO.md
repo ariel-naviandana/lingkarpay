@@ -39,7 +39,7 @@ Bagian "tercatat di blockchain" (langkah 8) bisa didemokan penuh di Sepolia: nya
 ## Demo blockchain dan kuorum (bila waktu cukup, sekitar 4 menit)
 1. Jalankan `smoke-quorum.ps1 -WaitChain` (satu pembayaran manual di simulator). Jelaskan: tiga anggota, hanya satu yang membayar, jadi periode tidak bisa dicairkan; anggota mengusulkan menutup periode; dua dari tiga setuju (kuorum); periode siap cair; pencairan memakai dana yang terkumpul.
 2. Tunjukkan di log worker transaksi yang masuk (`proposeClosePeriod`, `castVote`, `executeProposal`, `markPayout`) dan semua job `confirmed` di database.
-3. Buka Etherscan contract (tab Transactions): tiap langkah punya hash. Jalankan `npm run inspect` (folder `contracts`) untuk menunjukkan state yang dibaca langsung dari contract: periode 1 `Done` walau lunas 1/3, `usulan #1 ... Executed | setuju 2`.
+3. Buka Etherscan contract (tab Transactions): tiap langkah punya hash dan nama fungsi (kode contract sudah terverifikasi; tab Contract menunjukkan Exact Match, dan Read Contract dapat dipakai langsung). Jalankan `npm run inspect` (folder `contracts`) untuk menunjukkan state yang dibaca langsung dari contract: periode 1 `Done` walau lunas 1/3, `usulan #1 ... Executed | setuju 2`.
 4. Pesan penting: aturan (kuorum, giliran terkunci, tidak ada catatan ganda) ditegakkan contract, bukan operator. Operator hanya meneruskan fakta pembayaran dan suara.
 Siapkan screenshot Etherscan dan video cadangan: satu transaksi di Sepolia butuh sekitar 12 detik. Bukti dan perintah: `docs/BUKTI_SEPOLIA.md`.
 

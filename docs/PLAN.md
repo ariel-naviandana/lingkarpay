@@ -51,7 +51,7 @@ Skenario pembayaran di Midtrans sandbox:
 | Duplikat, signature palsu, jumlah tidak cocok, tidak berurutan | `npm test` | Lolos |
 
 ## Smart contract dan modul chain
-Contract `0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2` di Sepolia (v2, final); riwayat v1 di `contracts/deployments/`. Worker (`apps/api/src/chain/worker.ts`) mencatat `createCircle`, `recordPayment`, `markPayout`, `proposeClosePeriod`, `castVote`, dan `executeProposal`; order menjadi `ANCHORED`. Rincian dan hash transaksi: `docs/BUKTI_SEPOLIA.md`.
+Contract `0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2` di Sepolia (v2, final); riwayat v1 di `contracts/deployments/`. Worker (`apps/api/src/chain/worker.ts`) mencatat `createCircle`, `recordPayment`, `markPayout`, `proposeClosePeriod`, `castVote`, dan `executeProposal`; order menjadi `ANCHORED`. Rincian dan hash transaksi: `docs/BUKTI_SEPOLIA.md`. Kode contract terverifikasi di Etherscan (Exact Match), Blockscout, dan Sourcify, sehingga daftar transaksi menampilkan nama fungsi.
 
 Kuorum: usulan menutup periode yang iurannya belum lengkap (mayoritas mutlak, satu anggota satu suara, batas voting 3 hari). Contract mendukung juga usulan mengganti anggota, tetapi itu belum terhubung ke backend.
 
@@ -60,7 +60,6 @@ Kuorum: usulan menutup periode yang iurannya belum lengkap (mayoritas mutlak, sa
 - **Rekonsiliasi `live=true`** (cek ke Status API): kodenya ada, belum dicoba.
 - **Penalti keterlambatan di sandbox:** terbukti di tes otomatis (backend dan contract), belum pada transaksi sandbox sungguhan (tenggat di smoke test 7 hari).
 - **Ganti anggota lewat kuorum:** hanya di contract dan tesnya, belum di backend (menyentuh tagihan, order, dan checkout).
-- **Verifikasi kode contract di Etherscan:** konfigurasi dan perintah sudah ada (`contracts/README.md`); butuh API key Etherscan.
 - **Frontend dan business case:** tugas jalur lain (kerangka frontend sudah disiapkan).
 
 ## Antarmuka dengan jalur lain

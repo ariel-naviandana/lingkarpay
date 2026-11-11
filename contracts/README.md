@@ -10,6 +10,7 @@ Contract LingkarPay (Solidity, Hardhat 3, `viem`) di Ethereum Sepolia. Aturan ar
 | Etherscan | https://sepolia.etherscan.io/address/0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2 |
 | Operator | `0xA21603A66BD42EE94C705c55da58c64497377193` (akun testnet khusus) |
 | Alamat dan ABI | `deployments/sepolia.json`, `deployments/LingkarPay.abi.json` |
+| Verifikasi kode | Terverifikasi di Etherscan (Exact Match), Blockscout, dan Sourcify; lihat bagian Verifikasi kode contract |
 | Deploy lama (v1) | `0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0`, arsip di `deployments/sepolia-v1.json` |
 
 Modul chain (worker TypeScript) ada di `apps/api/src/chain/` (lihat README di sana).
@@ -74,15 +75,20 @@ Remove-Item Env:SEPOLIA_PRIVATE_KEY
 ```
 Akun yang sama harus dipakai worker (`OPERATOR_PRIVATE_KEY` di `apps/api/.env`), karena akun deploy menjadi `operator`. Deploy v1 tetap di `ignition/deployments/chain-11155111` sebagai riwayat.
 
-## Verifikasi di Etherscan (opsional)
-Supaya nama fungsi terbaca di daftar transaksi dan kode contract bisa dibaca publik. Butuh API key gratis dari etherscan.io:
+## Verifikasi kode contract
+**Sudah terverifikasi** (11 November 2026) di tiga penjelajah blok, sehingga kodenya terbaca publik dan daftar transaksi menampilkan nama fungsi (`Record Payment`, `Vote`, `Mark Payout`, dan seterusnya):
+- Etherscan (Exact Match, optimizer 200 runs): https://sepolia.etherscan.io/address/0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2#code
+- Blockscout: https://eth-sepolia.blockscout.com/address/0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2#code
+- Sourcify: https://sourcify.dev/server/repo-ui/11155111/0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2
+
+Cara mengulang (butuh API key gratis dari etherscan.io yang disimpan di keystore: `npx hardhat keystore set ETHERSCAN_API_KEY`):
 ```powershell
-npx hardhat keystore set ETHERSCAN_API_KEY          # tempel API key di prompt
+npx hardhat build --build-profile production        # WAJIB: samakan profil build dengan yang dipakai deploy
 $env:SEPOLIA_PRIVATE_KEY = (Get-Content .\.secrets\operator.key).Trim()
 npx hardhat verify --network sepolia 0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2
 Remove-Item Env:SEPOLIA_PRIVATE_KEY
 ```
-Contract tidak punya argumen constructor.
+Contract tidak punya argumen constructor. **Pelajaran:** Hardhat Ignition men-deploy dengan profil build `production` (optimizer aktif, 200 runs), sedangkan `npm run build` dan `npm test` memakai profil `default` (tanpa optimizer). Tanpa `build --build-profile production` lebih dulu, `verify` gagal dengan `HHE80009: bytecode does not match any of your local contracts` (bukan masalah API key atau jaringan). `verify` mencoba Etherscan, Blockscout, dan Sourcify sekaligus; yang sudah terverifikasi dijawab `already verified`. Banner Etherscan "may be a proxy contract" adalah heuristik otomatis dan tidak berlaku: contract ini tidak memakai delegatecall, assembly, atau pola upgrade.
 
 ## Memeriksa data langsung di contract
 `npm run inspect` membaca state satu kelompok langsung dari contract: status, urutan giliran, penerima tiap periode, siapa yang lunas beserta `refHash`, hash pencairan, dan usulan kuorum beserta suaranya. Berguna untuk demo.

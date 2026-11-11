@@ -13,6 +13,14 @@ Alur yang diminta tugas: **bayar fiat sukses → webhook gateway → server mema
 
 v2 menambah `createCircle` idempoten (`externalRef`), usulan kuorum, dan pencegahan usulan ganda. Semua kejadian di bagian "Bukti v2" memakai contract v2.
 
+## Verifikasi kode contract (v2)
+Kode sumber contract terverifikasi di tiga penjelajah blok (kompilator v0.8.34, optimizer 200 runs, EVM osaka). Siapa pun dapat membaca kodenya, memanggil fungsi baca lewat tab Read Contract, dan melihat nama fungsi pada tiap transaksi:
+- Etherscan (Exact Match): https://sepolia.etherscan.io/address/0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2#code
+- Blockscout: https://eth-sepolia.blockscout.com/address/0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2#code
+- Sourcify: https://sourcify.dev/server/repo-ui/11155111/0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2
+
+Daftar transaksi contract v2 di Etherscan menampilkan 11 transaksi dengan nama fungsi: `Create Circle`, 3 x `Add Member`, `Start Circle`, `Record Payment`, `Propose Close Period`, 2 x `Vote`, `Execute Proposal`, dan `Mark Payout`.
+
 ## Bukti v2: pembayaran, kuorum, dan pencairan di Sepolia
 Skenario (`apps/api/scripts/smoke-quorum.ps1 -WaitChain`): kelompok 3 anggota, hanya anggota A yang membayar (Midtrans sandbox, VA BCA lewat simulator), lalu anggota A mengusulkan menutup periode, A dan B setuju (kuorum 2 dari 3), periode siap cair, dan pencairan simulasi memakai dana yang terkumpul. Sisi backend: 15 pemeriksaan lolos.
 
