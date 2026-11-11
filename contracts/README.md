@@ -84,7 +84,7 @@ Akun yang sama harus dipakai worker (`OPERATOR_PRIVATE_KEY` di `apps/api/.env`),
 | T1 | `closePeriod` dan `markPayout` + tes | Ditulis, menunggu `npm test` |
 | T2 | `applyPenalty` (denda terutang, audit) + tes | Ditulis, menunggu `npm test` |
 | T3 | Tes skenario proposal Tabel 19 | Ditulis, menunggu `npm test` |
-| T4 | Deploy ke Sepolia, ekspor alamat dan ABI | Belum |
+| T4 | Deploy ke Sepolia, ekspor alamat dan ABI | Selesai (11 Nov): `0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0` di Sepolia, lihat `deployments/sepolia.json` |
 | T5 | Worker chain terhadap node lokal | Selesai dan terverifikasi (11 Nov): pembayaran Midtrans sandbox menjadi `ANCHORED`, `createCircle`/`recordPayment`/`markPayout` terkonfirmasi |
 | T6 | Uji end to end di Sepolia | Belum |
 | T7 | Kuorum `propose`/`vote` (opsional) | Belum; `it.todo` |
@@ -114,3 +114,6 @@ cd C:\coding\lingkarpay\contracts
 docker exec lingkarpay-db psql -U lingkarpay -d lingkarpay -c "select id, chain_circle_id from circles order by id desc limit 3;"
 $env:LINGKARPAY_ADDRESS="0x..."; $env:CIRCLE_ID="<chain_circle_id>"; npm run inspect
 ```
+
+### Contract di Sepolia
+Alamat: `0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0` (chain 11155111). Lihat di Etherscan: `https://sepolia.etherscan.io/address/0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0`. Alamat dan ABI ada di `deployments/` (dibaca worker dan frontend). Perintah Hardhat ke Sepolia membutuhkan `SEPOLIA_RPC_URL` (keystore) dan `$env:SEPOLIA_PRIVATE_KEY` (dari `.secrets\operator.key`) di jendela PowerShell yang sama.

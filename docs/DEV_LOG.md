@@ -44,6 +44,9 @@ Lima keputusan desain contract disepakati (lihat `contracts/README.md`): `markPa
 ## 2026-11-11 — T5 end to end di node lokal lolos
 Worker chain dijalankan terhadap node Hardhat lokal bersama backend dan Midtrans sandbox: pembayaran di simulator (dua anggota) menghasilkan order `ANCHORED`; job `createCircle`, `recordPayment`, dan `markPayout` terkonfirmasi (dicek lewat database). Worker mendahulukan `createCircle`, dan job pembayaran milik kelompok yang dibuat sebelum migrasi 002 (belum punya `chain_circle_id`) tetap `queued`, sesuai desain gating di `claimJobs`. Tahap berikutnya: T4 dan T6 di Sepolia.
 
+## 2026-11-11 — Contract ter-deploy ke Sepolia (T4)
+LingkarPay ter-deploy ke Sepolia (`0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0`) lewat Hardhat Ignition dengan akun testnet khusus (private key hanya di `.secrets/`, di-gitignore; URL RPC di keystore Hardhat). Alamat dan ABI diekspor ke `contracts/deployments/`. Berikutnya T6: worker dan backend diarahkan ke Sepolia (`CHAIN_NAME=sepolia`), lalu smoke test dan bukti transaksi di Etherscan.
+
 ## Template entri
 ```
 ## YYYY-MM-DD — <jalur>
