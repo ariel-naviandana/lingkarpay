@@ -41,6 +41,9 @@ Jalur payment gateway menyiapkan kerangka kode agar jalur lain punya bayangan da
 ## 2026-11-09 — Keputusan desain contract disepakati; kontribusi smart contract
 Lima keputusan desain contract disepakati (lihat `contracts/README.md`): `markPayout` menutup periode sendiri; `applyPenalty` mencatat denda terutang sebagai audit; kuorum terakhir dan opsional; periode berikutnya dibuka di `markPayout`; worker idempoten. Jalur smart contract belum dimulai oleh anggota lain, sehingga pengerjaan dimulai dari tahap T0 (lingkungan dan kompilasi kerangka) oleh jalur payment gateway, dengan pemilik jalur tetap dilibatkan agar kontribusi dan pemahaman tetap terbagi.
 
+## 2026-11-11 — T5 end to end di node lokal lolos
+Worker chain dijalankan terhadap node Hardhat lokal bersama backend dan Midtrans sandbox: pembayaran di simulator (dua anggota) menghasilkan order `ANCHORED`; job `createCircle`, `recordPayment`, dan `markPayout` terkonfirmasi (dicek lewat database). Worker mendahulukan `createCircle`, dan job pembayaran milik kelompok yang dibuat sebelum migrasi 002 (belum punya `chain_circle_id`) tetap `queued`, sesuai desain gating di `claimJobs`. Tahap berikutnya: T4 dan T6 di Sepolia.
+
 ## Template entri
 ```
 ## YYYY-MM-DD — <jalur>

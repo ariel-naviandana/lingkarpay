@@ -85,7 +85,7 @@ Akun yang sama harus dipakai worker (`OPERATOR_PRIVATE_KEY` di `apps/api/.env`),
 | T2 | `applyPenalty` (denda terutang, audit) + tes | Ditulis, menunggu `npm test` |
 | T3 | Tes skenario proposal Tabel 19 | Ditulis, menunggu `npm test` |
 | T4 | Deploy ke Sepolia, ekspor alamat dan ABI | Belum |
-| T5 | Worker chain terhadap node lokal | Belum (kerangka `worker.example.ts` sudah disesuaikan) |
+| T5 | Worker chain terhadap node lokal | Selesai dan terverifikasi (11 Nov): pembayaran Midtrans sandbox menjadi `ANCHORED`, `createCircle`/`recordPayment`/`markPayout` terkonfirmasi |
 | T6 | Uji end to end di Sepolia | Belum |
 | T7 | Kuorum `propose`/`vote` (opsional) | Belum; `it.todo` |
 | T8 | Dokumentasi | Sebagian |
@@ -106,3 +106,11 @@ Keputusan desain yang sudah diterapkan: `markPayout` menutup periode sendiri (bu
 
 ## Rencana tahapan
 T0 siapkan lingkungan dan kompilasi kerangka; T1 `closePeriod` + `markPayout`; T2 `applyPenalty`; T3 tes sesuai proposal Tabel 19; T4 deploy Sepolia; T5 worker terhadap node lokal; T6 uji end to end di Sepolia; T7 kuorum (opsional); T8 dokumentasi. Target: T5 dapat ditunjukkan sebelum progress report (sebelum 24 November), pembekuan 25 November.
+
+### Memeriksa data langsung di contract
+`npm run inspect` membaca state satu kelompok langsung dari contract (bukan dari database backend): status, urutan giliran, penerima tiap periode, siapa yang sudah lunas beserta `refHash`, dan hash pencairan. Berguna untuk demo.
+```powershell
+cd C:\coding\lingkarpay\contracts
+docker exec lingkarpay-db psql -U lingkarpay -d lingkarpay -c "select id, chain_circle_id from circles order by id desc limit 3;"
+$env:LINGKARPAY_ADDRESS="0x..."; $env:CIRCLE_ID="<chain_circle_id>"; npm run inspect
+```
