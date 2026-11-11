@@ -200,6 +200,31 @@ describe("kuorum: usulan tutup periode", () => {
     assert.equal(row.rows[0]!.status, "expired");
   });
 
+  dbTest("outbox: markPayout ditahan sampai semua job kuorum kelompok itu terkonfirmasi", async () => {
+    const s = await seed3();
+    await pay(s, 0);
+    const pr = await ctx.proposals.createClosePeriodProposal(asUser(s.members[0]!), s.periodId);
+    await ctx.proposals.castVote(asUser(s.members[0]!), pr.id, true);
+    await ctx.proposals.castVote(asUser(s.members[1]!), pr.id, true); // kuorum: executeProposal diantre
+    await ctx.payouts.createPayout(asUser(s.members[0]!), { periodId: s.periodId, mode: "simulated" });
+    assert.equal(await jobCount("markPayout"), 1);
+
+    // Tahap 1: usulan belum on-chain. Yang boleh diambil hanya recordPayment dan proposeClosePeriod.
+    const b1 = await ctx.outbox.claimJobs(20);
+    assert.deepEqual(b1.map((j) => j.kind).sort(), ["proposeClosePeriod", "recordPayment"]);
+    const propose = b1.find((j) => j.kind === "proposeClosePeriod")!;
+    await ctx.outbox.markProposalCreated(propose.id, "7", "0x" + "ab".repeat(32));
+
+    // Tahap 2: suara dan eksekusi dilepas, markPayout masih ditahan.
+    const b2 = await ctx.outbox.claimJobs(20);
+    assert.deepEqual(b2.map((j) => j.kind).sort(), ["castVote", "castVote", "executeProposal"]);
+    for (const j of b2) await ctx.outbox.markJobConfirmed(j.id, "0x" + "cd".repeat(32));
+
+    // Tahap 3: semua job kuorum terkonfirmasi, baru markPayout dilepas.
+    const b3 = await ctx.outbox.claimJobs(20);
+    assert.deepEqual(b3.map((j) => j.kind), ["markPayout"]);
+  });
+
   dbTest("outbox: suara dan eksekusi ditahan sampai usulan on-chain; proposeClosePeriod dikonfirmasi lewat markProposalCreated", async () => {
     const s = await seed3(); // kelompok sudah on-chain (chain_circle_id = 1)
     const pr = await ctx.proposals.createClosePeriodProposal(asUser(s.members[0]!), s.periodId);

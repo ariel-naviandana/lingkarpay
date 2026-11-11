@@ -294,6 +294,10 @@ async function handle(job: ChainJob): Promise<void> {
       await markJobConfirmed(job.id, hash);
       return;
     }
+
+    default:
+      // Worker lama yang belum di-restart tidak mengenal jenis job baru: jangan "selesai" diam-diam.
+      throw new Error(`Jenis job tidak dikenal: ${String((job as { kind: string }).kind)} (restart worker dengan kode terbaru)`);
   }
 }
 

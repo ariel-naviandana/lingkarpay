@@ -283,6 +283,8 @@ export async function enqueueExecuteProposal(db: Db, proposalId: number): Promis
  * - createCircle didahulukan. Job lain hanya diberikan bila kelompoknya sudah on-chain
  *   (circles.chain_circle_id terisi), dan payload.circleChainId diisi nilai terbaru.
  * - castVote/executeProposal hanya diberikan bila usulannya sudah on-chain (proposals.chain_proposal_id).
+ * - markPayout menunggu sampai semua job kuorum (usulan, suara, eksekusi) kelompok itu terkonfirmasi,
+ *   karena contract menolak pencairan periode yang belum lengkap dan belum ditutup kuorum.
  * - Job "sent" yang macet > 5 menit (worker mati) diambil ulang.
  */
 export async function claimJobs(limit = 10): Promise<ChainJob[]> {
@@ -312,6 +314,12 @@ export async function claimJobs(limit = 10): Promise<ChainJob[]> {
                 OR EXISTS (SELECT 1 FROM proposals pr
                             WHERE pr.id = (j.payload->>'proposalId')::int
                               AND pr.chain_proposal_id IS NOT NULL))
+           AND (j.kind <> 'markPayout'
+                OR NOT EXISTS (SELECT 1 FROM chain_jobs q
+                                WHERE q.kind IN ('proposeClosePeriod', 'castVote', 'executeProposal')
+                                  AND q.status <> 'confirmed'
+                                  AND q.payload->>'circleId' = j.payload->>'circleId'
+                                  AND q.id < j.id))
          ORDER BY CASE j.kind WHEN 'createCircle' THEN 0 ELSE 1 END, j.id
          LIMIT $1
          FOR UPDATE OF j SKIP LOCKED)
