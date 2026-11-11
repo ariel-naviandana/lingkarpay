@@ -27,6 +27,7 @@ contract LingkarPay {
         uint16 penaltyPct; // 0..100
         uint64 startTime; // 0 sampai kelompok dimulai
         CircleStatus status;
+        bytes32 externalRef; // referensi dari backend (hash id kelompok di database); mencegah kelompok ganda
     }
 
     struct Period {
@@ -64,6 +65,8 @@ contract LingkarPay {
     // ---------------------------------------------------------------- state
     address public operator;
     uint256 public circleCount;
+    /// Referensi eksternal => id kelompok on-chain (0 = belum ada). Membuat pembuatan kelompok idempoten.
+    mapping(bytes32 => uint256) public circleIdByRef;
 
     mapping(uint256 => Circle) private _circles;
     mapping(uint256 => bytes32[]) private _members; // indeks + 1 = urutan giliran = nomor periode penerima
@@ -75,12 +78,15 @@ contract LingkarPay {
     /// Lama voting sebuah usulan. Setelah itu suara ditolak dan usulan yang belum disetujui tidak berlaku.
     uint64 public constant VOTING_PERIOD = 3 days;
     uint256 public proposalCount;
+    /// Usulan tutup periode terakhir untuk sebuah periode (0 = belum ada). Mencegah usulan ganda.
+    mapping(uint256 => mapping(uint32 => uint256)) public proposalOfPeriod;
     mapping(uint256 => Proposal) private _proposals;
     mapping(uint256 => mapping(bytes32 => bool)) private _voted; // proposalId => memberId => sudah memilih
 
     // --------------------------------------------------------------- events
     event CircleCreated(
         uint256 indexed circleId,
+        bytes32 indexed externalRef,
         uint256 contributionAmount,
         uint32 memberCount,
         uint32 periodDays,
@@ -129,6 +135,8 @@ contract LingkarPay {
     error AlreadyPaid();
     error PenaltyAlreadyApplied();
     error NoPenalty(); // kelompok tanpa penalti (penaltyPct = 0)
+    error RefAlreadyUsed(); // referensi eksternal sudah dipakai kelompok lain
+    error ProposalExists(); // sudah ada usulan yang masih berlaku untuk periode itu
     error PeriodAlreadyComplete(); // semua sudah lunas, tidak perlu kuorum
     error MemberAlreadyPaidOut(); // giliran anggota itu sudah dicairkan/siap cair
     error ProposalNotOpen();
@@ -149,17 +157,20 @@ contract LingkarPay {
     /// Backend memanggil ini untuk job "createCircle". Mengembalikan id kelompok on-chain
     /// (dibaca worker dari event CircleCreated, lalu dilaporkan lewat markCircleCreated).
     function createCircle(
+        bytes32 externalRef,
         uint256 contributionAmount,
         uint32 memberCount,
         uint32 periodDays,
         uint16 penaltyPct
     ) external onlyOperator returns (uint256 circleId) {
-        if (contributionAmount == 0 || memberCount < 2 || periodDays == 0 || penaltyPct > 100) {
+        if (externalRef == bytes32(0) || contributionAmount == 0 || memberCount < 2 || periodDays == 0 || penaltyPct > 100) {
             revert InvalidParams();
         }
+        if (circleIdByRef[externalRef] != 0) revert RefAlreadyUsed();
         circleId = ++circleCount;
-        _circles[circleId] = Circle(contributionAmount, memberCount, periodDays, penaltyPct, 0, CircleStatus.Draft);
-        emit CircleCreated(circleId, contributionAmount, memberCount, periodDays, penaltyPct);
+        circleIdByRef[externalRef] = circleId;
+        _circles[circleId] = Circle(contributionAmount, memberCount, periodDays, penaltyPct, 0, CircleStatus.Draft, externalRef);
+        emit CircleCreated(circleId, externalRef, contributionAmount, memberCount, periodDays, penaltyPct);
     }
 
     /// Tambahkan anggota berurutan sesuai urutan giliran (turnOrder 1, 2, 3, ...).
@@ -281,7 +292,16 @@ contract LingkarPay {
         Period storage p = _periods[circleId][periodNo];
         if (p.status != PeriodStatus.Running) revert PeriodNotRunning();
         if (p.paidCount == c.memberCount) revert PeriodAlreadyComplete();
+        uint256 existing = proposalOfPeriod[circleId][periodNo];
+        if (existing != 0) {
+            Proposal storage e = _proposals[existing];
+            // Usulan yang masih terbuka (belum lewat batas waktu) atau sudah disetujui menghalangi usulan baru.
+            if ((e.status == ProposalStatus.Open && block.timestamp <= e.deadline) || e.status == ProposalStatus.Approved) {
+                revert ProposalExists();
+            }
+        }
         proposalId = _newProposal(circleId, ProposalKind.ClosePeriod, periodNo, bytes32(0), bytes32(0));
+        proposalOfPeriod[circleId][periodNo] = proposalId;
     }
 
     /// Usulan mengganti anggota yang mundur. Pengganti mewarisi gilirannya. Hanya untuk anggota yang

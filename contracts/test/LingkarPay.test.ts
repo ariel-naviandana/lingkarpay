@@ -10,6 +10,7 @@ import { stringToHex } from "viem";
 const memberId = (ref: string) => stringToHex(ref, { size: 32 });
 const REF = (n: number) => stringToHex(`ref${n}`, { size: 32 });
 const PAYOUT = (n: number) => stringToHex(`payout${n}`, { size: 32 });
+const CREF = stringToHex("circle-1", { size: 32 }); // referensi eksternal kelompok (di backend: hash id kelompok)
 
 const CONTRIBUTION = 100000n;
 const PENALTY_PCT = 5;
@@ -25,7 +26,7 @@ describe("LingkarPay", async function () {
   /** Kontrak dengan satu kelompok yang sudah berisi anggota tetapi belum dimulai. */
   async function deployDraft(memberCount = 2, penaltyPct = PENALTY_PCT) {
     const c = await viem.deployContract("LingkarPay");
-    await c.write.createCircle([CONTRIBUTION, memberCount, 7, penaltyPct]);
+    await c.write.createCircle([CREF, CONTRIBUTION, memberCount, 7, penaltyPct]);
     for (let i = 1; i <= memberCount; i++) {
       await c.write.addMember([1n, memberId(`m_test${i}`)]);
     }
@@ -52,7 +53,7 @@ describe("LingkarPay", async function () {
   describe("kelompok", () => {
     it("membuat kelompok dan memancarkan event CircleCreated", async function () {
       const c = await viem.deployContract("LingkarPay");
-      await viem.assertions.emitWithArgs(c.write.createCircle([CONTRIBUTION, 2, 7, 5]), c, "CircleCreated", [1n, CONTRIBUTION, 2, 7, 5]);
+      await viem.assertions.emitWithArgs(c.write.createCircle([CREF, CONTRIBUTION, 2, 7, 5]), c, "CircleCreated", [1n, CREF, CONTRIBUTION, 2, 7, 5]);
     });
 
     it("menambah anggota berurutan, lalu memulai kelompok", async function () {
@@ -66,34 +67,50 @@ describe("LingkarPay", async function () {
 
     it("parameter createCircle tidak valid ditolak", async function () {
       const c = await viem.deployContract("LingkarPay");
-      await viem.assertions.revertWithCustomError(c.write.createCircle([0n, 2, 7, 5]), c, "InvalidParams");
-      await viem.assertions.revertWithCustomError(c.write.createCircle([CONTRIBUTION, 1, 7, 5]), c, "InvalidParams");
-      await viem.assertions.revertWithCustomError(c.write.createCircle([CONTRIBUTION, 2, 0, 5]), c, "InvalidParams");
-      await viem.assertions.revertWithCustomError(c.write.createCircle([CONTRIBUTION, 2, 7, 101]), c, "InvalidParams");
+      await viem.assertions.revertWithCustomError(c.write.createCircle([CREF, 0n, 2, 7, 5]), c, "InvalidParams");
+      await viem.assertions.revertWithCustomError(c.write.createCircle([CREF, CONTRIBUTION, 1, 7, 5]), c, "InvalidParams");
+      await viem.assertions.revertWithCustomError(c.write.createCircle([CREF, CONTRIBUTION, 2, 0, 5]), c, "InvalidParams");
+      await viem.assertions.revertWithCustomError(c.write.createCircle([CREF, CONTRIBUTION, 2, 7, 101]), c, "InvalidParams");
     });
 
     it("hanya operator yang boleh membuat kelompok", async function () {
       const c = await viem.deployContract("LingkarPay");
       const [, other] = await viem.getWalletClients();
       await viem.assertions.revertWithCustomError(
-        c.write.createCircle([CONTRIBUTION, 2, 7, 5], { account: other.account }),
+        c.write.createCircle([CREF, CONTRIBUTION, 2, 7, 5], { account: other.account }),
         c,
         "NotOperator",
       );
+    });
+
+    it("referensi eksternal: id dapat dicari; referensi kosong atau ganda ditolak (idempoten)", async function () {
+      const c = await viem.deployContract("LingkarPay");
+      await c.write.createCircle([CREF, CONTRIBUTION, 2, 7, 5]);
+      assert.equal(await c.read.circleIdByRef([CREF]), 1n);
+      assert.equal((await c.read.getCircle([1n])).externalRef, CREF);
+      await viem.assertions.revertWithCustomError(c.write.createCircle([CREF, CONTRIBUTION, 2, 7, 5]), c, "RefAlreadyUsed");
+      await viem.assertions.revertWithCustomError(
+        c.write.createCircle([stringToHex("", { size: 32 }), CONTRIBUTION, 2, 7, 5]),
+        c,
+        "InvalidParams",
+      );
+      const ref2 = stringToHex("circle-2", { size: 32 });
+      await c.write.createCircle([ref2, CONTRIBUTION, 2, 7, 5]);
+      assert.equal(await c.read.circleIdByRef([ref2]), 2n);
     });
 
     it("anggota melebihi jumlah atau ganda ditolak", async function () {
       const c = await deployDraft(2);
       await viem.assertions.revertWithCustomError(c.write.addMember([1n, memberId("m_test3")]), c, "CircleFull");
       const d = await viem.deployContract("LingkarPay");
-      await d.write.createCircle([CONTRIBUTION, 3, 7, 5]);
+      await d.write.createCircle([CREF, CONTRIBUTION, 3, 7, 5]);
       await d.write.addMember([1n, memberId("m_test1")]);
       await viem.assertions.revertWithCustomError(d.write.addMember([1n, memberId("m_test1")]), d, "AlreadyMember");
     });
 
     it("kelompok tidak bisa dimulai sebelum anggota lengkap, dan tidak bisa dimulai dua kali", async function () {
       const d = await viem.deployContract("LingkarPay");
-      await d.write.createCircle([CONTRIBUTION, 3, 7, 5]);
+      await d.write.createCircle([CREF, CONTRIBUTION, 3, 7, 5]);
       await d.write.addMember([1n, memberId("m_test1")]);
       await viem.assertions.revertWithCustomError(d.write.startCircle([1n]), d, "InvalidParams");
       const c = await deployStarted(2);
@@ -322,7 +339,7 @@ describe("LingkarPay", async function () {
 
     it("pembulatan ke atas sama dengan backend", async function () {
       const c = await viem.deployContract("LingkarPay");
-      await c.write.createCircle([10001n, 2, 7, 5]); // 500,05 -> 501
+      await c.write.createCircle([CREF, 10001n, 2, 7, 5]); // 500,05 -> 501
       await c.write.addMember([1n, memberId("m_test1")]);
       await c.write.addMember([1n, memberId("m_test2")]);
       await c.write.startCircle([1n]);
@@ -353,6 +370,33 @@ describe("LingkarPay", async function () {
       assert.equal(await c2.read.quorumOf([1n]), 2);
       assert.equal(await c3.read.quorumOf([1n]), 2);
       assert.equal(await c4.read.quorumOf([1n]), 3);
+    });
+
+    it("usulan tutup periode ganda ditolak selama masih berlaku; boleh lagi setelah ditolak atau kedaluwarsa", async function () {
+      const c = await deployPartial();
+      await c.write.proposeClosePeriod([1n, 1]);
+      assert.equal(await c.read.proposalOfPeriod([1n, 1]), 1n);
+      await viem.assertions.revertWithCustomError(c.write.proposeClosePeriod([1n, 1]), c, "ProposalExists");
+      // ditolak: boleh mengusulkan lagi
+      await c.write.vote([1n, m(1), false]);
+      await c.write.vote([1n, m(2), false]);
+      assert.equal(await proposalStatus(c, 1n), PS.Rejected);
+      await c.write.proposeClosePeriod([1n, 1]);
+      assert.equal(await c.read.proposalOfPeriod([1n, 1]), 2n);
+      // melewati batas waktu: boleh mengusulkan lagi
+      await networkHelpers.time.increase(VOTING + 10);
+      await c.write.proposeClosePeriod([1n, 1]);
+      assert.equal(await c.read.proposalOfPeriod([1n, 1]), 3n);
+    });
+
+    it("usulan yang sudah disetujui (belum dieksekusi) menghalangi usulan baru", async function () {
+      const c = await deployPartial();
+      await c.write.proposeClosePeriod([1n, 1]);
+      await c.write.vote([1n, m(1), true]);
+      await c.write.vote([1n, m(2), true]);
+      await c.write.vote([1n, m(3), true]);
+      assert.equal(await proposalStatus(c, 1n), PS.Approved);
+      await viem.assertions.revertWithCustomError(c.write.proposeClosePeriod([1n, 1]), c, "ProposalExists");
     });
 
     it("usulan tutup periode ditolak bila sudah lengkap, periode belum berjalan, atau bukan operator", async function () {
