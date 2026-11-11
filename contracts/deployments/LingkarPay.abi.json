@@ -21,12 +21,22 @@
   },
   {
     "inputs": [],
+    "name": "AlreadyVoted",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "CircleFull",
     "type": "error"
   },
   {
     "inputs": [],
     "name": "InvalidParams",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "MemberAlreadyPaidOut",
     "type": "error"
   },
   {
@@ -56,6 +66,11 @@
   },
   {
     "inputs": [],
+    "name": "PeriodAlreadyComplete",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "PeriodNotComplete",
     "type": "error"
   },
@@ -71,6 +86,31 @@
   },
   {
     "inputs": [],
+    "name": "ProposalExists",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ProposalNotOpen",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "QuorumNotReached",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RefAlreadyUsed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "VotingClosed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "WrongStatus",
     "type": "error"
   },
@@ -82,6 +122,12 @@
         "internalType": "uint256",
         "name": "circleId",
         "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "externalRef",
+        "type": "bytes32"
       },
       {
         "indexed": false,
@@ -153,6 +199,37 @@
       }
     ],
     "name": "MemberAdded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "circleId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "oldMember",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "newMember",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint32",
+        "name": "turnOrder",
+        "type": "uint32"
+      }
+    ],
+    "name": "MemberReplaced",
     "type": "event"
   },
   {
@@ -286,6 +363,132 @@
     "type": "event"
   },
   {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "proposalId",
+        "type": "uint256"
+      }
+    ],
+    "name": "ProposalApproved",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "proposalId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "circleId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "enum LingkarPay.ProposalKind",
+        "name": "kind",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint32",
+        "name": "periodNo",
+        "type": "uint32"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "oldMember",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "newMember",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint64",
+        "name": "deadline",
+        "type": "uint64"
+      }
+    ],
+    "name": "ProposalCreated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "proposalId",
+        "type": "uint256"
+      }
+    ],
+    "name": "ProposalExecuted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "proposalId",
+        "type": "uint256"
+      }
+    ],
+    "name": "ProposalRejected",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "proposalId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "memberId",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "approve",
+        "type": "bool"
+      }
+    ],
+    "name": "Voted",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "VOTING_PERIOD",
+    "outputs": [
+      {
+        "internalType": "uint64",
+        "name": "",
+        "type": "uint64"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "uint256",
@@ -342,6 +545,25 @@
   {
     "inputs": [
       {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "name": "circleIdByRef",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "uint256",
         "name": "circleId",
         "type": "uint256"
@@ -359,6 +581,11 @@
   },
   {
     "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "externalRef",
+        "type": "bytes32"
+      },
       {
         "internalType": "uint256",
         "name": "contributionAmount",
@@ -419,6 +646,19 @@
     "inputs": [
       {
         "internalType": "uint256",
+        "name": "proposalId",
+        "type": "uint256"
+      }
+    ],
+    "name": "executeProposal",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
         "name": "circleId",
         "type": "uint256"
       }
@@ -456,6 +696,11 @@
             "internalType": "enum LingkarPay.CircleStatus",
             "name": "status",
             "type": "uint8"
+          },
+          {
+            "internalType": "bytes32",
+            "name": "externalRef",
+            "type": "bytes32"
           }
         ],
         "internalType": "struct LingkarPay.Circle",
@@ -617,6 +862,96 @@
     "inputs": [
       {
         "internalType": "uint256",
+        "name": "proposalId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getProposal",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "circleId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "enum LingkarPay.ProposalKind",
+            "name": "kind",
+            "type": "uint8"
+          },
+          {
+            "internalType": "enum LingkarPay.ProposalStatus",
+            "name": "status",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint32",
+            "name": "periodNo",
+            "type": "uint32"
+          },
+          {
+            "internalType": "uint32",
+            "name": "approvals",
+            "type": "uint32"
+          },
+          {
+            "internalType": "uint32",
+            "name": "rejections",
+            "type": "uint32"
+          },
+          {
+            "internalType": "uint64",
+            "name": "deadline",
+            "type": "uint64"
+          },
+          {
+            "internalType": "bytes32",
+            "name": "oldMember",
+            "type": "bytes32"
+          },
+          {
+            "internalType": "bytes32",
+            "name": "newMember",
+            "type": "bytes32"
+          }
+        ],
+        "internalType": "struct LingkarPay.Proposal",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "proposalId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "memberId",
+        "type": "bytes32"
+      }
+    ],
+    "name": "hasVoted",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
         "name": "circleId",
         "type": "uint256"
       },
@@ -673,6 +1008,115 @@
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "proposalCount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint32",
+        "name": "",
+        "type": "uint32"
+      }
+    ],
+    "name": "proposalOfPeriod",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "circleId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint32",
+        "name": "periodNo",
+        "type": "uint32"
+      }
+    ],
+    "name": "proposeClosePeriod",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "proposalId",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "circleId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "oldMember",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "newMember",
+        "type": "bytes32"
+      }
+    ],
+    "name": "proposeReplaceMember",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "proposalId",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "circleId",
+        "type": "uint256"
+      }
+    ],
+    "name": "quorumOf",
+    "outputs": [
+      {
+        "internalType": "uint32",
+        "name": "",
+        "type": "uint32"
       }
     ],
     "stateMutability": "view",
@@ -744,6 +1188,29 @@
       }
     ],
     "name": "startCircle",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "proposalId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "memberId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bool",
+        "name": "approve",
+        "type": "bool"
+      }
+    ],
+    "name": "vote",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
