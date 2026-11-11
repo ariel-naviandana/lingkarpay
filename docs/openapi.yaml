@@ -414,6 +414,65 @@ paths:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Reconciliation" } } } }
         "403": { $ref: "#/components/responses/Error" }
 
+  /periods/{periodId}/close-proposals:
+    post:
+      tags: [Kuorum]
+      summary: Usulan menutup periode yang iurannya belum lengkap (anggota; butuh kuorum)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: periodId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "201": { description: Usulan dibuat, content: { application/json: { schema: { $ref: "#/components/schemas/Proposal" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { description: "PERIOD_NOT_OPEN, PERIOD_COMPLETE, atau PROPOSAL_EXISTS", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /circles/{id}/proposals:
+    get:
+      tags: [Kuorum]
+      summary: Daftar usulan sebuah kelompok (anggota)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/CircleId" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  proposals: { type: array, items: { $ref: "#/components/schemas/Proposal" } }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /proposals/{id}:
+    get:
+      tags: [Kuorum]
+      summary: Detail usulan (anggota)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Proposal" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /proposals/{id}/votes:
+    post:
+      tags: [Kuorum]
+      summary: Memberi suara pada usulan (satu anggota satu suara)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [approve], properties: { approve: { type: boolean } } }
+      responses:
+        "201": { description: Suara tercatat; usulan terbaru, content: { application/json: { schema: { $ref: "#/components/schemas/Proposal" } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { description: "ALREADY_VOTED, PROPOSAL_NOT_OPEN, atau VOTING_CLOSED", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer }
@@ -599,6 +658,22 @@ components:
         outcome:
           type: string
           enum: [applied, unchanged, duplicate, unknown_order, ignored_transition, ignored_status, amount_mismatch, invalid_payload, invalid_signature]
+
+    Proposal:
+      type: object
+      properties:
+        id: { type: integer }
+        circleId: { type: integer }
+        periodId: { type: integer }
+        periodNo: { type: integer }
+        kind: { type: string, enum: [close_period] }
+        status: { type: string, enum: [open, rejected, expired, executed] }
+        deadline: { type: string, format: date-time }
+        approvals: { type: integer }
+        rejections: { type: integer }
+        quorum: { type: integer, description: "Mayoritas mutlak anggota (anggota/2 + 1)" }
+        myVote: { type: boolean, nullable: true, description: "Suara pemanggil; null bila belum memilih" }
+        chainProposalId: { type: string, nullable: true, description: "Null sampai usulan tercatat di chain" }
 
     Reconciliation:
       type: object

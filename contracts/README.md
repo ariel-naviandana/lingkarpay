@@ -1,128 +1,127 @@
 # contracts — jalur smart contract
 
-Folder ini milik jalur smart contract. Kerangka awal sudah disiapkan (lihat bagian "Kerangka awal" di bawah). Disarankan Hardhat 3 + Solidity + `viem`, jaringan Ethereum Sepolia (ETH uji saja).
+Contract LingkarPay (Solidity, Hardhat 3, `viem`) di Ethereum Sepolia. Aturan arisan ditegakkan contract; **uang tidak disimpan di contract** (arsitektur pilihan A: rupiah tetap di payment gateway, contract hanya aturan dan catatan yang bisa diperiksa semua orang).
 
-## Tugas
-Contract LingkarPay, tes unit, deploy ke Sepolia, simpan alamat dan ABI, dokumentasi fungsi. Modul chain (worker TypeScript) ada di `apps/api/src/chain/` (lihat README di sana).
+**Status (11 November 2026):** contract lengkap dan dites (40 test lulus), ter-deploy di Sepolia (v2), dan terbukti end to end dengan backend dan Midtrans sandbox. Bukti: `docs/BUKTI_SEPOLIA.md`.
 
-## Fungsi (dari proposal, Tabel 17)
-`createCircle`, `addMember`, `startCircle`, `recordPayment`, `applyPenalty`, `closePeriod`, `markPayout`, fungsi baca (`getCircle`, `getPeriod`, `getMemberStatus`), event untuk tiap perubahan penting. Kuorum (`propose`/`vote`) opsional dan dikerjakan terakhir.
-
-## Aturan yang harus ditegakkan
-Parameter terkunci setelah `startCircle`; penerima ditentukan jadwal (bukan operator); satu iuran satu catatan (pencatatan ganda ditolak); penalti dihitung kontrak, seragam; pencairan hanya bisa ditandai siap bila syarat terpenuhi. Hanya akun operator (penanda tangan backend) yang boleh mencatat.
-
-## Data yang dikirim backend (antarmuka outbox)
-Dari `chain_jobs.payload` (lihat `docs/DESIGN.md` bagian 7). Tanpa data pribadi.
-```
-createCircle:   circleId, contributionAmount, memberCount, periodDays, penaltyPct,
-                members[ { memberRef ("m_xxxxxxxx"), turnOrder } ]  (urutan giliran terkunci)
-recordPayment:  circleId, circleChainId, periodNo, memberRef,
-                refHash (bytes32, Keccak-256), paidAt (detik UNIX)
-markPayout:     circleId, circleChainId, periodNo, recipientMemberRef,
-                payoutRefHash (bytes32), recipientAccountHash (bytes32|null), amount (rupiah bulat)
-```
-Satu job `createCircle` memetakan ke `createCircle` + `addMember` + `startCircle`. Id kelompok yang dikembalikan chain dilaporkan ke backend lewat `markCircleCreated` agar job pembayaran kelompok itu dibuka.
-
-Rancang tipe contract agar cocok: `memberRef` sebagai `bytes32`/`string`, `refHash` sebagai `bytes32`, nominal rupiah sebagai `uint256`. Jangan menyimpan nama, email, atau nomor rekening on-chain.
-
-## Hasil deploy
-Simpan di `contracts/deployments/sepolia.json` (dipakai modul chain dan portal verifikasi):
-```json
-{ "network": "sepolia", "chainId": 11155111, "address": "0x...", "deployedAt": "2026-11-xx", "abiPath": "contracts/artifacts/.../LingkarPay.json" }
-```
-Salin ABI-nya juga ke folder ini bila artefak build tidak di-commit.
-
-## Rahasia
-Private key penanda tangan (akun testnet khusus) dan URL RPC hanya di `.env` (`SEPOLIA_RPC_URL`, `DEPLOYER_PRIVATE_KEY`, `OPERATOR_PRIVATE_KEY`). Jangan pernah di-commit atau dikirim ke chat. Contoh nama variabel boleh di `.env.example`.
-
-## Struktur yang disarankan
-```
-contracts/
-├── contracts/LingkarPay.sol
-├── test/                 tes unit (aturan terkunci, penolakan pencatatan ganda, penalti, penerima sesuai urutan, dst.)
-├── scripts/ atau ignition/   deploy
-├── deployments/          sepolia.json
-└── .env.example
-```
-Skenario tes yang diminta proposal (Tabel 19): pencatatan oleh non-operator ditolak, pencatatan dua kali ditolak, pembayaran lewat tenggat kena penalti, penutupan periode saat iuran belum lengkap tanpa kuorum ditolak, penerima sesuai urutan terkunci, perubahan parameter setelah mulai ditolak, kuorum tidak tercapai tidak berlaku.
-
-## Kerangka awal (sudah disesuaikan dengan Hardhat 3.21.2)
-Dibuat dari hasil `npx hardhat --init` (templat `node-test-runner-viem`). **Belum dikompilasi di komputer pengembang.** Cara menjalankan (Windows, dari folder `contracts`):
-```powershell
-cd C:\coding\lingkarpay\contracts
-npm install
-npm run build        # kompilasi Solidity (compiler 0.8.34 diunduh pertama kali)
-npm test             # 5 tes dasar harus hijau; sisanya it.todo
-```
-Hardhat 3 mendukung Node 22 (min. 22.10) dan 24; Node 23 menghasilkan peringatan `EBADENGINE` pada beberapa dependensi. Bila ada masalah aneh, pindah ke Node 22 LTS (mis. dengan nvm-windows).
-
-| File | Isi | Status |
-|---|---|---|
-| `contracts/LingkarPay.sol` | Struct, event, error, kontrol akses operator, kelompok, pembayaran, penalti, penutupan periode, pencairan, kuorum, fungsi baca | Lengkap |
-| `test/LingkarPay.test.ts` | Tes kelompok, pembayaran, penutupan periode, pencairan, dan penalti; kuorum masih `it.todo` | Ada |
-| `ignition/modules/LingkarPay.ts` | Modul deploy (Ignition) | Ada |
-| `scripts/new-account.ts` | Membuat akun testnet khusus; private key ke `.secrets/` (tidak dicetak) | Ada |
-| `scripts/export-deployment.ts` | Mengekspor alamat dan ABI ke `deployments/` | Ada (verifikasi path setelah deploy pertama) |
-| `hardhat.config.ts`, `package.json`, `tsconfig.json` | Mengikuti templat Hardhat 3.21.2 | Ada |
-
-### Rahasia dan deploy ke Sepolia
-Hardhat tidak membaca `.env`. Variabel konfigurasi `SEPOLIA_RPC_URL` dan `SEPOLIA_PRIVATE_KEY` diisi lewat keystore Hardhat (disarankan) atau variabel environment:
-```powershell
-npx hardhat run scripts/new-account.ts          # buat akun testnet; catat ALAMATNYA
-# minta ETH Sepolia ke alamat itu lewat faucet
-npx hardhat keystore set SEPOLIA_RPC_URL         # tempel URL RPC (Alchemy/Infura)
-npx hardhat keystore set SEPOLIA_PRIVATE_KEY     # tempel isi .secrets/operator.key
-npm run deploy:sepolia
-npm run export:sepolia                           # tulis deployments/sepolia.json dan ABI
-```
-Akun yang sama harus dipakai worker (`OPERATOR_PRIVATE_KEY` di `apps/api/.env`), karena akun deploy menjadi `operator`.
-
-### Status tahapan
-| Tahap | Pekerjaan | Status |
-|---|---|---|
-| T0 | Lingkungan dan kompilasi kerangka | Selesai: kompilasi sukses dan 5 tes dasar hijau (9 Nov) |
-| T1 | `closePeriod` dan `markPayout` + tes | Selesai, tes lulus |
-| T2 | `applyPenalty` (denda terutang, audit) + tes | Selesai, tes lulus |
-| T3 | Tes skenario proposal Tabel 19 | Selesai, tes lulus |
-| T4 | Deploy ke Sepolia, ekspor alamat dan ABI | Selesai (11 Nov): `0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0` di Sepolia, lihat `deployments/sepolia.json` |
-| T5 | Worker chain terhadap node lokal | Selesai dan terverifikasi (11 Nov): pembayaran Midtrans sandbox menjadi `ANCHORED`, `createCircle`/`recordPayment`/`markPayout` terkonfirmasi |
-| T6 | Uji end to end di Sepolia | Belum |
-| T7 | Kuorum (`proposeClosePeriod`, `proposeReplaceMember`, `vote`, `executeProposal`) | Selesai: 37 test lulus (11 Nov). Belum ter-deploy di Sepolia dan belum terhubung ke backend |
-| T8 | Dokumentasi | Sebagian |
-
-Keputusan desain yang sudah diterapkan: `markPayout` menutup periode sendiri (butuh semua iuran tercatat on-chain), `applyPenalty` mencatat denda terutang tanpa memindahkan uang, periode berikutnya dibuka di `markPayout`.
-
-### Konvensi data
-`memberId` (bytes32) = `memberRef` samaran dari backend diubah dengan `stringToHex(ref, { size: 32 })` (viem). Nominal dalam rupiah bulat (`uint256`). `circleId` on-chain berbeda dari `circleId` database; hubungannya disimpan backend di `circles.chain_circle_id` lewat `markCircleCreated`.
-
-## Keputusan desain (disepakati 9 November 2026)
-| # | Keputusan |
+| | |
 |---|---|
-| 1 | `markPayout` menutup periode sendiri bila masih `Running` dan semua iuran lunas. Worker cukup memanggil satu fungsi. `closePeriod` tetap ada untuk jalur kuorum. |
-| 2 | `applyPenalty` mencatat denda yang *terutang* (sekali per anggota per periode, boleh dipanggil siapa pun setelah tenggat) sebagai catatan audit, dengan rumus yang sama dengan backend. Contract tidak memindahkan uang. |
-| 3 | Kuorum (`propose`/`vote`) dikerjakan terakhir dan opsional: hanya "tunda pencairan" dan "ganti anggota"; suara diteruskan backend. |
-| 4 | Periode berikutnya dibuka di dalam `markPayout`, seperti yang sudah dikerjakan backend. |
-| 5 | Worker idempoten: simpan id kelompok on-chain begitu event terbaca, dan cek sebelum membuat kelompok ulang bila worker restart. |
+| Alamat (v2, final) | `0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2` |
+| Etherscan | https://sepolia.etherscan.io/address/0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2 |
+| Operator | `0xA21603A66BD42EE94C705c55da58c64497377193` (akun testnet khusus) |
+| Alamat dan ABI | `deployments/sepolia.json`, `deployments/LingkarPay.abi.json` |
+| Deploy lama (v1) | `0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0`, arsip di `deployments/sepolia-v1.json` |
 
-## Rencana tahapan
-T0 siapkan lingkungan dan kompilasi kerangka; T1 `closePeriod` + `markPayout`; T2 `applyPenalty`; T3 tes sesuai proposal Tabel 19; T4 deploy Sepolia; T5 worker terhadap node lokal; T6 uji end to end di Sepolia; T7 kuorum (opsional); T8 dokumentasi. Target: T5 dapat ditunjukkan sebelum progress report (sebelum 24 November), pembekuan 25 November.
+Modul chain (worker TypeScript) ada di `apps/api/src/chain/` (lihat README di sana).
 
-### Memeriksa data langsung di contract
-`npm run inspect` membaca state satu kelompok langsung dari contract (bukan dari database backend): status, urutan giliran, penerima tiap periode, siapa yang sudah lunas beserta `refHash`, dan hash pencairan. Berguna untuk demo.
-```powershell
-cd C:\coding\lingkarpay\contracts
-docker exec lingkarpay-db psql -U lingkarpay -d lingkarpay -c "select id, chain_circle_id from circles order by id desc limit 3;"
-$env:LINGKARPAY_ADDRESS="0x..."; $env:CIRCLE_ID="<chain_circle_id>"; npm run inspect
-```
+## Fungsi
+| Kelompok | Fungsi | Catatan |
+|---|---|---|
+| Kelompok | `createCircle(externalRef, iuran, anggota, hari, penaltiPct)`, `addMember`, `startCircle` | `externalRef` (hash id kelompok di database) membuat pembuatan idempoten: referensi ganda ditolak (`RefAlreadyUsed`), dan `circleIdByRef` memberi id kelompok bila sudah ada. Setelah `startCircle`, anggota dan parameter terkunci |
+| Pembayaran | `recordPayment(circleId, periodNo, memberId, refHash, paidAt)` | Satu iuran satu catatan; event menandai terlambat (`late`) berdasarkan tenggat |
+| Penalti | `applyPenalty`, `penaltyDue` | Mencatat denda terutang (audit; contract tidak memindahkan uang), sekali per anggota per periode, boleh dipanggil siapa pun setelah tenggat. Rumus `ceil(iuran x persen / 100)` sama dengan backend |
+| Periode dan pencairan | `closePeriod`, `markPayout` | `markPayout` menutup periode sendiri (butuh semua iuran lunas atau keputusan kuorum), menyimpan hash pencairan, membuka periode berikutnya, dan menutup kelompok di periode terakhir |
+| Kuorum | `proposeClosePeriod`, `proposeReplaceMember`, `vote`, `executeProposal` | Lihat bagian Kuorum |
+| Baca | `getCircle`, `getMembers`, `getPeriod`, `getPayment`, `getPenalty`, `getProposal`, `hasVoted`, `dueDate`, `recipientOf`, `quorumOf`, `circleIdByRef`, `proposalOfPeriod` | |
 
-### Contract di Sepolia
-Alamat: `0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0` (chain 11155111). Lihat di Etherscan: `https://sepolia.etherscan.io/address/0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0`. Alamat dan ABI ada di `deployments/` (dibaca worker dan frontend). Perintah Hardhat ke Sepolia membutuhkan `SEPOLIA_RPC_URL` (keystore) dan `$env:SEPOLIA_PRIVATE_KEY` (dari `.secrets\operator.key`) di jendela PowerShell yang sama.
+Hanya `operator` (akun penanda tangan backend) yang boleh mencatat; membaca dan `applyPenalty` terbuka untuk siapa pun.
 
-### Kuorum (T7)
+## Aturan yang ditegakkan (semuanya dites)
+Parameter terkunci setelah `startCircle`; penerima ditentukan jadwal (urutan giliran terkunci), bukan operator; satu iuran satu catatan; penalti seragam; pencairan hanya bila semua lunas atau disetujui kuorum; kelompok dan usulan tidak bisa dibuat ganda. Skenario proposal Tabel 19 semuanya punya tes: pencatatan oleh non-operator ditolak, pencatatan dua kali ditolak, pembayaran lewat tenggat kena penalti, penutupan periode tanpa kuorum ditolak, penerima sesuai urutan terkunci, perubahan parameter setelah mulai ditolak, kuorum tidak tercapai tidak berlaku.
+
+## Kuorum
 Dua jenis usulan, keduanya hanya operasional (nominal, periode, penalti, dan urutan giliran tidak bisa diubah kuorum):
+
 | Usulan | Fungsi | Efek bila disetujui |
 |---|---|---|
 | Tutup periode meski iuran belum lengkap | `proposeClosePeriod(circleId, periodNo)` | Periode berstatus `ReadyPayout`, pencairan boleh jalan |
 | Ganti anggota yang mundur | `proposeReplaceMember(circleId, oldMember, newMember)` | Pengganti mewarisi giliran; iuran yang sudah tercatat di periode berjalan ikut pindah. Ditolak bila giliran anggota itu sudah dicairkan |
 
-Aturan: kuorum = mayoritas mutlak (`anggota / 2 + 1`); `vote(proposalId, memberId, approve)` satu anggota satu suara (diteruskan backend setelah autentikasi); disetujui saat setuju >= kuorum, ditolak bila kuorum mustahil tercapai; batas voting 3 hari (`VOTING_PERIOD`); `executeProposal` hanya untuk usulan yang disetujui, sehingga usulan yang tidak mencapai kuorum tidak berlaku. Belum terhubung ke backend (endpoint dan job outbox untuk usulan/suara belum ada).
+Aturan: kuorum = mayoritas mutlak (`anggota / 2 + 1`); `vote(proposalId, memberId, approve)` satu anggota satu suara (diteruskan backend setelah autentikasi, karena anggota tidak memegang dompet); disetujui saat setuju >= kuorum, ditolak bila kuorum mustahil tercapai; batas voting 3 hari (`VOTING_PERIOD`); `executeProposal` hanya untuk usulan yang disetujui, jadi usulan yang tidak mencapai kuorum tidak berlaku. Satu periode hanya boleh punya satu usulan tutup periode yang masih berlaku (`ProposalExists`; `proposalOfPeriod` memberi id-nya).
+
+Terhubung ke backend untuk **usulan tutup periode** (endpoint, tabel, dan job outbox; lihat `docs/API.md`). **Ganti anggota** hanya ada di contract dan tes, belum di backend, karena penggantian anggota di database menyentuh tagihan, order, dan checkout.
+
+## Data yang dikirim backend (antarmuka outbox)
+Dari `chain_jobs.payload` (lihat `docs/DESIGN.md` bagian 7). Tanpa data pribadi. Konvensi: `memberId` (bytes32) = `memberRef` samaran diubah dengan `stringToHex(ref, { size: 32 })` (viem); `externalRef` = `keccak256("lingkarpay:circle:<id database>")`; nominal rupiah bulat (`uint256`); `circleId` on-chain berbeda dari id database dan disimpan di `circles.chain_circle_id`.
+
+## Menjalankan (Windows, dari folder `contracts`)
+```powershell
+npm install
+npm run build        # kompilasi (solc 0.8.34 diunduh pertama kali)
+npm test             # 40 test lulus
+```
+Hardhat 3 mendukung Node 22 (min. 22.10) dan 24; Node 23 menghasilkan peringatan `EBADENGINE` (instalasi tetap berjalan). `npm test` memaksa jaringan simulasi, jadi aman walau variabel `HARDHAT_NETWORK` tertinggal di terminal.
+
+| File | Isi |
+|---|---|
+| `contracts/LingkarPay.sol` | Contract |
+| `test/LingkarPay.test.ts` | 40 test (kelompok, pembayaran, penalti, penutupan periode, pencairan, kuorum) |
+| `ignition/modules/LingkarPay.ts` | Modul deploy (Hardhat Ignition) |
+| `scripts/new-account.ts` | Membuat akun testnet khusus; private key ke `.secrets/` (tidak dicetak, di-gitignore) |
+| `scripts/export-deployment.ts` | Mengekspor alamat dan ABI deploy ke `deployments/` |
+| `scripts/inspect-circle.ts` | Membaca state kelompok langsung dari contract (bukan dari database) |
+| `hardhat.config.ts`, `package.json`, `tsconfig.json` | Konfigurasi (Hardhat 3.21.2) |
+
+## Deploy ke Sepolia
+Hardhat tidak membaca `.env`. `SEPOLIA_RPC_URL` disimpan di keystore Hardhat; private key lewat variabel environment di sesi PowerShell yang sama:
+```powershell
+npx hardhat run scripts/new-account.ts              # buat akun testnet; catat ALAMATNYA, minta ETH Sepolia lewat faucet
+npx hardhat keystore set SEPOLIA_RPC_URL            # tempel URL RPC (Alchemy/Infura) di prompt
+$env:SEPOLIA_PRIVATE_KEY = (Get-Content .\.secrets\operator.key).Trim()
+npm run deploy:sepolia                              # Ignition, --deployment-id sepolia-v2
+npm run export:sepolia                              # tulis deployments/sepolia.json dan ABI
+Remove-Item Env:SEPOLIA_PRIVATE_KEY
+```
+Akun yang sama harus dipakai worker (`OPERATOR_PRIVATE_KEY` di `apps/api/.env`), karena akun deploy menjadi `operator`. Deploy v1 tetap di `ignition/deployments/chain-11155111` sebagai riwayat.
+
+## Verifikasi di Etherscan (opsional)
+Supaya nama fungsi terbaca di daftar transaksi dan kode contract bisa dibaca publik. Butuh API key gratis dari etherscan.io:
+```powershell
+npx hardhat keystore set ETHERSCAN_API_KEY          # tempel API key di prompt
+$env:SEPOLIA_PRIVATE_KEY = (Get-Content .\.secrets\operator.key).Trim()
+npx hardhat verify --network sepolia 0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2
+Remove-Item Env:SEPOLIA_PRIVATE_KEY
+```
+Contract tidak punya argumen constructor.
+
+## Memeriksa data langsung di contract
+`npm run inspect` membaca state satu kelompok langsung dari contract: status, urutan giliran, penerima tiap periode, siapa yang lunas beserta `refHash`, hash pencairan, dan usulan kuorum beserta suaranya. Berguna untuk demo.
+```powershell
+docker exec lingkarpay-db psql -U lingkarpay -d lingkarpay -c "select id, chain_circle_id from circles order by id desc limit 3;"
+$env:SEPOLIA_PRIVATE_KEY = (Get-Content .\.secrets\operator.key).Trim()
+$env:HARDHAT_NETWORK = "sepolia"
+$env:LINGKARPAY_ADDRESS = "0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2"
+$env:CIRCLE_ID = "<chain_circle_id>"
+npm run inspect
+Remove-Item Env:HARDHAT_NETWORK, Env:SEPOLIA_PRIVATE_KEY, Env:LINGKARPAY_ADDRESS, Env:CIRCLE_ID
+```
+Variabel `$env:...` hanya berlaku di jendela PowerShell tempat diisi; bersihkan setelah selesai.
+
+## Keputusan desain
+| # | Keputusan |
+|---|---|
+| 1 | `markPayout` menutup periode sendiri bila masih `Running` dan semua iuran lunas; worker cukup memanggil satu fungsi. `closePeriod` tetap ada untuk jalur kuorum |
+| 2 | `applyPenalty` mencatat denda yang *terutang* sebagai catatan audit; contract tidak memindahkan uang |
+| 3 | Kuorum dikerjakan terakhir: tutup periode dan ganti anggota; suara diteruskan backend |
+| 4 | Periode berikutnya dibuka di dalam `markPayout` |
+| 5 | Worker idempoten: kelompok memakai `externalRef` dan `circleIdByRef`; usulan memakai `proposalOfPeriod`. Worker yang restart di tengah jalan melanjutkan dari state contract tanpa membuat catatan ganda |
+
+## Status tahapan
+| Tahap | Pekerjaan | Status |
+|---|---|---|
+| T0 | Lingkungan dan kompilasi | Selesai |
+| T1 | `closePeriod` dan `markPayout` | Selesai, tes lulus |
+| T2 | `applyPenalty` | Selesai, tes lulus |
+| T3 | Tes skenario proposal Tabel 19 | Selesai |
+| T4 | Deploy ke Sepolia | Selesai: v1 (awal) dan v2 (final, dengan `externalRef` dan kuorum) |
+| T5 | Worker terhadap node lokal | Selesai |
+| T6 | End to end di Sepolia | Selesai: pembayaran Midtrans sandbox, kuorum, dan pencairan tercatat di Sepolia (`docs/BUKTI_SEPOLIA.md`) |
+| T7 | Kuorum | Selesai: contract, tes, dan integrasi backend untuk usulan tutup periode |
+| T8 | Dokumentasi | Selesai |
+
+## Batasan yang diketahui
+- Operator dipercaya mencatat (oracle problem): contract tidak bisa memverifikasi pembayaran fiat sendiri. Mitigasi: `refHash` memungkinkan audit silang ke catatan gateway, dan semua pencatatan terlihat lewat event.
+- Suara kuorum diteruskan operator setelah autentikasi di backend; anggota tidak memegang dompet.
+- Anggota yang akan diganti ikut dihitung dalam kuorum dan boleh memberi suara atas penggantinya.
+- Riwayat iuran periode yang sudah selesai tetap atas nama anggota lama setelah penggantian.
+- Pembayaran yang masuk setelah periode ditutup kuorum tidak bisa dicatat on-chain (contract menolak karena periode sudah tertutup); backend menandainya di rekonsiliasi.

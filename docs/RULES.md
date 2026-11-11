@@ -13,6 +13,8 @@ Berlaku untuk semua pekerjaan di `apps/api`. Ringkas dan bisa dicek.
 ## 2. Keamanan (standar tugas)
 - Server Key, Client Key, private key penanda tangan hanya di `.env` (sudah di `.gitignore`). Tidak boleh di kode, log, commit, atau chat.
 - `.env.example` hanya berisi nama variabel dan nilai contoh palsu.
+- Jangan menempelkan isi `.env` (atau key apa pun) ke chat, issue, atau tangkapan layar; hapus nilai di sebelah kanan `=` sebelum menunjukkan. Key yang sempat terkirim wajib di-rotate.
+- Satu set konfigurasi chain aktif saja di `.env`; set yang tidak dipakai diberi `#`. Worker chain di-restart setelah `.env` atau kode berubah, dan hanya satu worker yang berjalan.
 - Server Key dibuat dengan izin seminimal mungkin: Snap Checkout, Core API, Cancel transaction, dan Expire transaction = Write; refund dan produk lain = None. Setelah mengganti key, revoke key lama.
 - Log tidak boleh mencetak header otorisasi, Server Key, atau payload lengkap yang memuat data pribadi.
 - Hanya sandbox dan data dummy. Bayar hanya lewat simulator Midtrans, bukan aplikasi bank sungguhan.

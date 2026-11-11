@@ -6,7 +6,7 @@ import { sepolia } from "viem/chains";
 // Portal verifikasi PUBLIK: membaca langsung dari contract di Sepolia, bukan dari database LingkarPay.
 // Tujuannya membuktikan anggota dapat memeriksa tanpa mempercayai server.
 const abi = parseAbi([
-  "function getCircle(uint256 circleId) view returns ((uint256 contributionAmount, uint32 memberCount, uint32 periodDays, uint16 penaltyPct, uint64 startTime, uint8 status))",
+  "function getCircle(uint256 circleId) view returns ((uint256 contributionAmount, uint32 memberCount, uint32 periodDays, uint16 penaltyPct, uint64 startTime, uint8 status, bytes32 externalRef))",
   "function getMembers(uint256 circleId) view returns (bytes32[])",
 ]);
 const STATUS = ["None", "Draft", "Active", "Completed"];

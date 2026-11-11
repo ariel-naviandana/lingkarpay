@@ -6,7 +6,8 @@ Untuk progress report (di kelas, sebelum 24 November) dan presentasi (mulai 26 N
 - [ ] Docker Desktop menyala, `docker compose up -d` (Postgres).
 - [ ] Server key punya izin Snap Checkout, Core API, Cancel transaction, dan Expire transaction = Write (lihat `apps/api/README.md`).
 - [ ] `apps\api\.env` berisi: `DATABASE_URL`, `MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`, `MIDTRANS_SIGNATURE_KEY`.
-- [ ] `npm run migrate`, `npm run typecheck`, `npm test` (87 tes lulus).
+- [ ] `npm run migrate`, `npm run typecheck`, `npm test` (101 tes lulus). Di folder `contracts`: `npm test` (40 tes lulus).
+- [ ] Untuk demo blockchain: `apps\api\.env` satu set aktif `CHAIN_NAME=sepolia`, `CHAIN_RPC_URL`, `OPERATOR_PRIVATE_KEY`, `LINGKARPAY_ADDRESS=0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2`; `npm run chain:worker` berjalan (baris pertama lognya menunjukkan Sepolia, operator, dan alamat contract yang benar).
 - [ ] Nyalakan tunnel **sekali** dan jangan dimatikan: `cloudflared tunnel --url http://localhost:3001`. Salin alamatnya ke Notification URL di dashboard Midtrans (`.../midtrans-webhook`), Save, reload untuk memastikan.
 - [ ] `powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1 -Both` lolos semua.
 - [ ] Rekam **video demo cadangan** dari smoke test (koneksi ke Midtrans sempat lambat, tunnel gratis tanpa jaminan).
@@ -31,8 +32,16 @@ Dari `apps\api`. Semuanya di Midtrans sandbox; di halaman Snap pilih Bank Transf
 | E-wallet | `smoke-scenarios.ps1 -Scenario Ewallet` | Bayar GoPay lewat simulator; status SETTLED |
 | Kedaluwarsa | `smoke-scenarios.ps1 -Scenario Expire -ApiExpire` | Order EXPIRED, anggota bisa membayar lagi |
 | Dibatalkan | `smoke-scenarios.ps1 -Scenario Cancel -ApiCancel` | Order FAILED, anggota bisa membayar lagi |
+| Kuorum | `smoke-quorum.ps1 -WaitChain` | Satu anggota membayar, usulan tutup periode disetujui 2 dari 3, pencairan berjalan, dan usulan tercatat di Sepolia (butuh worker) |
 
-Bagian "tercatat di blockchain" (langkah 8) bisa didemokan penuh di Sepolia: nyalakan `npm run chain:worker` dengan `.env` yang menunjuk ke Sepolia, lalu setelah order `ANCHORED` buka `https://sepolia.etherscan.io/address/0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0` (tab Transactions) dan jalankan `npm run inspect` di folder `contracts`. Satu transaksi di Sepolia butuh sekitar 12 detik, jadi siapkan screenshot dan video cadangan. Bukti dan perintah: `docs/BUKTI_SEPOLIA.md`.
+Bagian "tercatat di blockchain" (langkah 8) bisa didemokan penuh di Sepolia: nyalakan `npm run chain:worker` dengan `.env` yang menunjuk ke Sepolia, lalu setelah order `ANCHORED` buka `https://sepolia.etherscan.io/address/0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2` (tab Transactions) dan jalankan `npm run inspect` di folder `contracts`. Satu transaksi di Sepolia butuh sekitar 12 detik, jadi siapkan screenshot dan video cadangan. Bukti dan perintah: `docs/BUKTI_SEPOLIA.md`.
+
+## Demo blockchain dan kuorum (bila waktu cukup, sekitar 4 menit)
+1. Jalankan `smoke-quorum.ps1 -WaitChain` (satu pembayaran manual di simulator). Jelaskan: tiga anggota, hanya satu yang membayar, jadi periode tidak bisa dicairkan; anggota mengusulkan menutup periode; dua dari tiga setuju (kuorum); periode siap cair; pencairan memakai dana yang terkumpul.
+2. Tunjukkan di log worker transaksi yang masuk (`proposeClosePeriod`, `castVote`, `executeProposal`, `markPayout`) dan semua job `confirmed` di database.
+3. Buka Etherscan contract (tab Transactions): tiap langkah punya hash. Jalankan `npm run inspect` (folder `contracts`) untuk menunjukkan state yang dibaca langsung dari contract: periode 1 `Done` walau lunas 1/3, `usulan #1 ... Executed | setuju 2`.
+4. Pesan penting: aturan (kuorum, giliran terkunci, tidak ada catatan ganda) ditegakkan contract, bukan operator. Operator hanya meneruskan fakta pembayaran dan suara.
+Siapkan screenshot Etherscan dan video cadangan: satu transaksi di Sepolia butuh sekitar 12 detik. Bukti dan perintah: `docs/BUKTI_SEPOLIA.md`.
 
 ## Jika ada yang gagal
 | Masalah | Tindakan |
@@ -41,6 +50,7 @@ Bagian "tercatat di blockchain" (langkah 8) bisa didemokan penuh di Sepolia: nya
 | Snap lambat/timeout | Coba ulang; sudah ada retry. Putar video cadangan bila perlu. |
 | Alamat tunnel berubah | Perbarui Notification URL di dashboard Midtrans. |
 | Port atau database error | `docker compose up -d`, `npm run migrate`, restart `npm run dev`. |
+| Job chain tidak jalan | Pastikan satu worker aktif dengan kode terbaru, `.env` satu set (Sepolia, contract v2), dan saldo ETH Sepolia operator cukup. Worker tidak memuat ulang otomatis; restart. |
 
 ## Pertanyaan yang mungkin muncul
 - **Apakah Midtrans bisa terhubung ke Ethereum?** Tidak langsung. Midtrans mengirim webhook HTTP ke backend; backend memverifikasi signature, lalu mencatat hasilnya ke smart contract lewat modul chain (outbox). Backend adalah jembatan dan satu-satunya titik kepercayaan di sisi penghubung (oracle problem; diakui di proposal Bab II.D).

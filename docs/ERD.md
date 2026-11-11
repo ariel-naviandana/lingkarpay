@@ -1,6 +1,6 @@
 # ERD — LingkarPay (jalur payment gateway)
 
-Sumber kebenaran: `apps/api/db/migrations/001_init.sql`. Diagram Mermaid (dapat dirender di GitHub).
+Sumber kebenaran: `apps/api/db/migrations/` (001, 002, 003). Diagram Mermaid (dapat dirender di GitHub).
 
 ```mermaid
 erDiagram
@@ -18,6 +18,12 @@ erDiagram
   circles ||--o| chain_jobs : createCircle
   payouts ||--o| chain_jobs : markPayout
   chain_jobs ||--o{ chain_transactions : percobaan_tx
+  circles ||--o{ proposals : memiliki
+  periods ||--o{ proposals : ditutup_lewat
+  proposals ||--o{ proposal_votes : suara
+  members ||--o{ proposal_votes : memberi
+  proposals ||--o{ chain_jobs : propose_dan_execute
+  proposal_votes ||--o| chain_jobs : castVote
   orders ||..o{ webhook_events : order_id_dari_payload
 
   users {
@@ -100,10 +106,12 @@ erDiagram
   }
   chain_jobs {
     int id PK
-    text kind "createCircle|recordPayment|markPayout"
+    text kind "createCircle|recordPayment|markPayout|proposeClosePeriod|castVote|executeProposal"
     int circle_id FK
     int order_id FK
     int payout_id FK
+    int proposal_id FK
+    int vote_id FK
     jsonb payload
     text status "queued|sent|confirmed|failed"
     int attempts
@@ -115,6 +123,22 @@ erDiagram
     text ref_hash
     text status "pending|confirmed|failed"
   }
+  proposals {
+    int id PK
+    int circle_id FK
+    int period_id FK
+    text kind "close_period"
+    text status "open|rejected|expired|executed"
+    int created_by FK
+    timestamptz deadline "3 hari"
+    text chain_proposal_id "diisi worker chain"
+  }
+  proposal_votes {
+    int id PK
+    int proposal_id FK
+    int member_id FK
+    bool approve
+  }
 ```
 
 ## Aturan integritas penting
@@ -123,3 +147,5 @@ erDiagram
 - Satu job per kelompok, order, dan payout: indeks unik parsial `chain_jobs (kind, circle_id)`, `(kind, order_id)`, dan `(kind, payout_id)`.
 - Uang selalu BIGINT rupiah.
 - Data on-chain hanya `member_ref` dan hash (tanpa nama, email, atau nomor rekening).
+- Satu usulan terbuka per periode: indeks unik parsial `proposals (period_id) WHERE status = 'open'`. Satu suara per anggota per usulan: `UNIQUE (proposal_id, member_id)`.
+- Satu job per usulan dan per suara: indeks unik parsial `chain_jobs (kind, proposal_id)` dan `(kind, vote_id)`. Bentuk baris `chain_jobs` dijaga CHECK menurut `kind`.

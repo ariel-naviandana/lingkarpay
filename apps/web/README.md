@@ -61,4 +61,5 @@ Cari `TODO(frontend)` di kode:
 3. Portal verifikasi lengkap: status iuran per anggota per periode, penerima, penalti, tautan transaksi ke Etherscan Sepolia.
 4. Tampilan yang layak: pesan error, loading, responsif, penanganan status `SETTLED_PENDING_CHAIN`, callback Snap (`onClose`).
 5. User stories dan kriteria penerimaan (tulis di `docs/`), uji end to end, video demo.
-Catatan: portal verifikasi baru berguna setelah contract ter-deploy dan `circles.chain_circle_id` terisi oleh modul chain.
+6. Antarmuka kuorum: daftar usulan sebuah kelompok, tombol "usulkan tutup periode", tombol setuju/tolak, dan status (`GET /circles/:id/proposals`, `POST /periods/:periodId/close-proposals`, `POST /proposals/:id/votes`; lihat `docs/API.md`). Tampilkan kuorum, jumlah suara, tenggat, dan status (`open`, `rejected`, `expired`, `executed`).
+Catatan: contract final ter-deploy di Sepolia (`0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2`, alamat dan ABI di `contracts/deployments/`); isi `VITE_CONTRACT_ADDRESS` dengan alamat itu. Portal verifikasi baru berguna bila `circles.chain_circle_id` sudah terisi oleh worker chain. Hasil `getCircle` kini memuat `externalRef` (field tambahan).

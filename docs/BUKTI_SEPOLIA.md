@@ -1,18 +1,60 @@
 # Bukti end to end di Ethereum Sepolia
 
-Alur yang diminta tugas: **bayar fiat sukses → webhook gateway → server memanggil smart contract → tercatat di testnet.** Dokumen ini merangkum buktinya (11 November 2026). Semua data di bawah publik; tidak ada key atau rahasia.
+Alur yang diminta tugas: **bayar fiat sukses → webhook gateway → server memanggil smart contract → tercatat di testnet.** Dokumen ini merangkum buktinya. Semua data di bawah publik; tidak ada key atau rahasia. Tanggal uji: 11 November 2026.
 
 ## Contract
-| | |
-|---|---|
-| Jaringan | Ethereum Sepolia (chain 11155111) |
-| Alamat contract | `0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0` |
-| Etherscan | https://sepolia.etherscan.io/address/0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0 |
-| Operator (akun testnet khusus) | `0xA21603A66BD42EE94C705c55da58c64497377193` |
-| Alamat dan ABI | `contracts/deployments/sepolia.json`, `contracts/deployments/LingkarPay.abi.json` |
+| | v2 (final, dengan `externalRef` dan kuorum) | v1 (awal, riwayat) |
+|---|---|---|
+| Jaringan | Ethereum Sepolia (chain 11155111) | sama |
+| Alamat | `0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2` | `0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0` |
+| Etherscan | https://sepolia.etherscan.io/address/0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2 | https://sepolia.etherscan.io/address/0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0 |
+| Operator (akun testnet khusus) | `0xA21603A66BD42EE94C705c55da58c64497377193` | sama |
+| Berkas | `contracts/deployments/sepolia.json`, `LingkarPay.abi.json` | `sepolia-v1.json`, `LingkarPay.v1.abi.json` |
 
-## Transaksi dari satu kelompok (2 anggota, 1 periode dicairkan)
-Urutan di Etherscan (tab Transactions). Kolom Method di Etherscan menampilkan kode heks karena contract belum diverifikasi di sana.
+v2 menambah `createCircle` idempoten (`externalRef`), usulan kuorum, dan pencegahan usulan ganda. Semua kejadian di bagian "Bukti v2" memakai contract v2.
+
+## Bukti v2: pembayaran, kuorum, dan pencairan di Sepolia
+Skenario (`apps/api/scripts/smoke-quorum.ps1 -WaitChain`): kelompok 3 anggota, hanya anggota A yang membayar (Midtrans sandbox, VA BCA lewat simulator), lalu anggota A mengusulkan menutup periode, A dan B setuju (kuorum 2 dari 3), periode siap cair, dan pencairan simulasi memakai dana yang terkumpul. Sisi backend: 15 pemeriksaan lolos.
+
+### Semua job outbox terkonfirmasi
+```
+createCircle        confirmed  1
+recordPayment       confirmed  1
+proposeClosePeriod  confirmed  1
+castVote            confirmed  2
+executeProposal     confirmed  1
+markPayout          confirmed  1
+```
+
+### State yang dibaca langsung dari contract
+Dari `npm run inspect` (membaca contract di Sepolia, bukan database backend):
+```
+Kelompok #1 di 0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2
+  status Active | iuran 10000 | 3 anggota | 7 hari | penalti 5%
+  urutan giliran: m_37058eb1 > m_5cedd173 > m_99c97b5f
+
+Periode 1: Done | lunas 1/3 | penerima m_37058eb1
+  hash pencairan: 0xa175f2a7171d14e1e9d095b701ff6416113d1f90274e8d96f276bea444dbf657
+  m_37058eb1: lunas, refHash 0xcf4f4338ee5fc536439fe2319ebdc08fdb0c674980334dd1d176d5c622814412
+  usulan #1 (ClosePeriod): Executed | setuju 2, tolak 0, kuorum 2
+    suara tercatat: m_37058eb1
+    suara tercatat: m_5cedd173
+
+Periode 2: Running | lunas 0/3 | penerima m_5cedd173
+
+Periode 3: Scheduled | lunas 0/3 | penerima m_99c97b5f
+```
+Yang terlihat:
+- Urutan giliran terkunci dan penerima periode 1 sesuai giliran.
+- Periode 1 `Done` walau hanya 1 dari 3 anggota yang lunas: bisa dicairkan karena **usulan kuorum disetujui (2 dari 3)** dan dieksekusi, bukan karena operator memaksa.
+- Pembayaran tercatat dengan `refHash` (bukti silang ke catatan gateway), dan pencairan dengan hash.
+- Periode 2 terbuka otomatis setelah pencairan periode 1.
+- Di chain hanya ID samaran (`m_xxxxxxxx`); tidak ada nama, email, atau nomor rekening.
+
+Hash transaksi tiap langkah ada di tab Transactions contract (link Etherscan di atas) dan di database (`chain_transactions`).
+
+## Bukti v1: alur pembayaran tanpa kuorum (riwayat)
+Kelompok 2 anggota, kedua anggota membayar (Midtrans sandbox), periode 1 dicairkan. Tujuh transaksi dari operator ke contract v1:
 
 | Block | Kejadian | Hash |
 |---|---|---|
@@ -24,43 +66,22 @@ Urutan di Etherscan (tab Transactions). Kolom Method di Etherscan menampilkan ko
 | 12110311 | `recordPayment` anggota 2 | `0x493f48a1e9ae3bf5c5f5c363ff0844c1854397d4f1f1352afc485ecd7b1fd72f` |
 | 12110312 | `markPayout` periode 1 | `0xee2a611c41378fe93ef1218ea85c1f7c2cc096a5e6a728bae223543cacdf470f` |
 
-Buka satu transaksi dengan `https://sepolia.etherscan.io/tx/<hash>`.
+Hash di database cocok dengan Etherscan. State dari contract v1: periode 1 `Done`, lunas 2/2, dua `refHash`, hash pencairan, dan periode 2 `Running`.
 
 ## Rantai bukti
-1. **Pembayaran Midtrans sandbox** (VA BCA lewat simulator): order `LP-1-1-1-mwbt0n48` dan `LP-1-1-2-mwbt1shc`, masing-masing Rp11.000 (iuran Rp10.000 + biaya admin Rp1.000).
-2. **Webhook** bertanda tangan diterima backend, order menjadi `SETTLED`, dan satu job `recordPayment` masuk outbox per order.
-3. **Worker chain** mengambil job dan mengirim transaksi ke Sepolia; hash dicatat di tabel `chain_transactions`.
-4. **Order `ANCHORED`**, semua job `confirmed`:
-   ```
-   createCircle   confirmed  1
-   recordPayment  confirmed  2
-   markPayout     confirmed  1
-   ```
-5. **Hash di database cocok dengan Etherscan** (`startCircle` di block 12110307, `recordPayment` di 12110309 dan 12110311, `markPayout` di 12110312).
-
-## State yang dibaca langsung dari contract
-Dari `npm run inspect` (membaca contract di Sepolia, bukan database backend):
-```
-Kelompok #1 di 0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0
-  status Active | iuran 10000 | 2 anggota | 7 hari | penalti 5%
-  urutan giliran: m_054a4d76 > m_ecaa3fd7
-
-Periode 1: Done | lunas 2/2 | penerima m_054a4d76
-  hash pencairan: 0xce7b1ffeffdccc78c4eb08b7894749708f906ddb4ace8fc4745c07b49d82d49a
-  m_054a4d76: lunas, refHash 0xeb1843409e39d57317015e808ebf21b42a9e2fb845b1dfee7c305c150795f370
-  m_ecaa3fd7: lunas, refHash 0x064a8c73663903a8576d7fece844b35a9cee1a58fb877e3c48bb1cf20efe3679
-
-Periode 2: Running | lunas 0/2 | penerima m_ecaa3fd7
-```
-Yang terlihat: urutan giliran terkunci, penerima periode 1 sesuai giliran, `refHash` per pembayaran (bukti silang ke catatan gateway), hash pencairan, dan periode 2 terbuka otomatis. Di chain hanya ID samaran (`m_xxxxxxxx`); tidak ada nama, email, atau nomor rekening.
+1. Pembayaran Midtrans sandbox (VA BCA lewat simulator), iuran Rp10.000 + biaya admin Rp1.000.
+2. Webhook bertanda tangan diterima backend; order `SETTLED`; satu job `recordPayment` masuk outbox per order.
+3. Worker chain mengambil job dan mengirim transaksi ke Sepolia; hash dicatat di `chain_transactions`; order `ANCHORED`.
+4. Hash di database dapat dibuka di Etherscan, dan state yang sama terbaca langsung dari contract.
 
 ## Cara mengulang
 ```powershell
-# backend dan worker menunjuk ke Sepolia (apps\api\.env: CHAIN_NAME=sepolia, CHAIN_RPC_URL, OPERATOR_PRIVATE_KEY, LINGKARPAY_ADDRESS)
+# apps\api\.env: CHAIN_NAME=sepolia, CHAIN_RPC_URL, OPERATOR_PRIVATE_KEY, LINGKARPAY_ADDRESS (satu set aktif)
 cd C:\coding\lingkarpay\apps\api
 npm run dev                       # terminal 1
 npm run chain:worker              # terminal 2
-powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1 -Both   # bayar dua kali di simulator
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke-quorum.ps1 -WaitChain   # bayar satu kali di simulator
+# atau alur pembayaran biasa: scripts\smoke.ps1 -Both
 
 # periksa
 docker exec lingkarpay-db psql -U lingkarpay -d lingkarpay -c "select kind, status, count(*) from chain_jobs group by 1,2 order by 1,2;"
@@ -69,6 +90,7 @@ docker exec lingkarpay-db psql -U lingkarpay -d lingkarpay -c "select j.kind, t.
 # state langsung dari contract
 cd C:\coding\lingkarpay\contracts
 $env:SEPOLIA_PRIVATE_KEY = (Get-Content .\.secrets\operator.key).Trim()
-$env:HARDHAT_NETWORK = "sepolia"; $env:LINGKARPAY_ADDRESS = "0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0"; $env:CIRCLE_ID = "1"
+$env:HARDHAT_NETWORK = "sepolia"; $env:LINGKARPAY_ADDRESS = "0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2"; $env:CIRCLE_ID = "1"
 npm run inspect
+Remove-Item Env:HARDHAT_NETWORK, Env:SEPOLIA_PRIVATE_KEY, Env:LINGKARPAY_ADDRESS, Env:CIRCLE_ID
 ```

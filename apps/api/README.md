@@ -10,7 +10,7 @@ cd apps\api
 npm install
 npm run typecheck
 npm run migrate                           # membuat tabel
-npm test                                  # 87 tes (butuh Postgres)
+npm test                                  # 101 tes (butuh Postgres)
 npm run dev                               # http://localhost:3001
 ```
 
@@ -19,6 +19,7 @@ Salin `.env.example` ke `.env`, lalu isi sendiri (jangan dikirim ke chat atau di
 - `DATABASE_URL` (nilai contoh ada di `.env.example`).
 - `MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`.
 - `MIDTRANS_SIGNATURE_KEY`: Signature Secret Key dari Settings > Access Keys. Dipakai memverifikasi signature notifikasi dan Status API.
+- Modul chain (hanya bila menjalankan worker): `CHAIN_NAME` (`sepolia` atau `hardhat`), `CHAIN_RPC_URL`, `OPERATOR_PRIVATE_KEY` (akun testnet khusus), `LINGKARPAY_ADDRESS`. Satu set aktif saja; detail di `src/chain/README.md`.
 
 Server menolak start bila ada variabel wajib yang kurang. **Restart `npm run dev` setiap `.env` berubah** (`tsx watch` tidak memuat ulang karena `.env`). Log start menampilkan sidik jari key (`server_key_fp`) untuk memastikan yang termuat.
 
@@ -41,6 +42,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1 -Both            # 
 powershell -ExecutionPolicy Bypass -File .\scripts\smoke-scenarios.ps1 -Scenario Ewallet
 powershell -ExecutionPolicy Bypass -File .\scripts\smoke-scenarios.ps1 -Scenario Expire -ApiExpire
 powershell -ExecutionPolicy Bypass -File .\scripts\smoke-scenarios.ps1 -Scenario Cancel -ApiCancel
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke-quorum.ps1 -WaitChain  # kuorum; -WaitChain menunggu worker
 ```
 `Expire` tanpa `-ApiExpire` menunggu notifikasi kedaluwarsa asli dari Midtrans (set `ORDER_EXPIRY_MINUTES=5` dan restart server). Pencairan lewat Iris: `docs/IRIS.md`. Runbook demo: `docs/DEMO.md`.
 
@@ -52,9 +54,12 @@ src/app.ts            Fastify, error handler, parser JSON
 src/routes/           HTTP tipis
 src/services/         logika (orderStatus, billing, checkout, webhook, gatewayStatus, orders, outbox, payouts, reconciliation, midtrans, iris, ...)
 src/db/               pool, migrasi
-src/chain/            modul chain (jalur smart contract; kerangka worker.example.ts)
+src/chain/            worker chain (viem): outbox -> contract Sepolia; npm run chain:worker
 src/test/             helper dan tes integrasi (database lingkarpay_test)
-db/migrations/        SQL berurutan (001, 002)
+db/migrations/        SQL berurutan (001, 002, 003)
 scripts/              smoke test PowerShell
 ```
 Perubahan status order hanya lewat `src/services/orderStatus.ts`. Tes memakai database terpisah `lingkarpay_test` (dibuat otomatis; menolak berjalan bila namanya tidak berakhiran `_test`) dan key palsu.
+
+## Worker chain dan kuorum
+Worker (`npm run chain:worker`) mencatat job outbox ke contract; lihat `src/chain/README.md`. Worker tidak memuat ulang otomatis: restart setelah `.env` atau kode berubah. Endpoint kuorum (usulan tutup periode dan suara): `docs/API.md`. Bukti end to end di Sepolia: `docs/BUKTI_SEPOLIA.md`.

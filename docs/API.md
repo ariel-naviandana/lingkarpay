@@ -83,6 +83,18 @@ Memuat `summary` (jumlah per status, `grossPaid`, `adminFeeRevenue`, `collectedF
 | `GATEWAY_PAID_DB_NOT`, `DB_PAID_GATEWAY_NOT`, `GATEWAY_CLOSED_DB_PENDING` | Status database berbeda dari gateway (live) |
 | `GATEWAY_AMOUNT_MISMATCH`, `GATEWAY_NOT_FOUND`, `GATEWAY_SIGNATURE_INVALID`, `GATEWAY_CHECK_FAILED` | Masalah saat pemeriksaan live |
 
+## Kuorum (usulan tutup periode)
+Keputusan operasional untuk periode yang iurannya belum lengkap. Hanya anggota kelompok. Aturan: mayoritas mutlak (`anggota / 2 + 1`), satu anggota satu suara, batas voting 3 hari (sama dengan contract).
+
+| | |
+|---|---|
+| `POST /periods/:periodId/close-proposals` | Tanpa body. Periode harus `running` dan iuran belum lengkap. → 201 usulan. 403 `FORBIDDEN` (bukan anggota), 409 `PERIOD_NOT_OPEN`, `PERIOD_COMPLETE`, `PROPOSAL_EXISTS` (sudah ada usulan terbuka untuk periode itu) |
+| `GET /circles/:id/proposals` | → `{ proposals: [...] }` |
+| `GET /proposals/:id` | → usulan |
+| `POST /proposals/:id/votes` | Body `{ approve: true/false }`. → 201 usulan terbaru. 403 `FORBIDDEN`, 409 `ALREADY_VOTED`, `PROPOSAL_NOT_OPEN`, `VOTING_CLOSED` |
+
+Bentuk usulan: `{ id, circleId, periodId, periodNo, kind:"close_period", status, deadline, approvals, rejections, quorum, myVote, chainProposalId }`. `status`: `open`, `rejected` (kuorum mustahil tercapai), `expired` (lewat batas waktu atau semua iuran akhirnya lunas), `executed` (disetujui kuorum). Saat disetujui, periode langsung `ready_payout` (pencairan lewat `/payouts/simulate` dengan dana yang terkumpul) dan periode tidak menerima iuran baru. `chainProposalId` bernilai `null` sampai usulan tercatat di chain.
+
 ## Lainnya
 `GET /health` → `{ ok: true }`. Pada `DEV_TOOLS=true`: `GET /` (halaman tes Snap) dan `POST /dev/checkout` (transaksi tes tanpa database, order_id `TEST-...`).
 `circle.chainCircleId` pada detail kelompok bernilai `null` sampai kelompok dicatat di chain (job `createCircle` selesai).
