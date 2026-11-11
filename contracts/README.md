@@ -58,7 +58,7 @@ Hardhat 3 mendukung Node 22 (min. 22.10) dan 24; Node 23 menghasilkan peringatan
 
 | File | Isi | Status |
 |---|---|---|
-| `contracts/LingkarPay.sol` | Struct, event, error, kontrol akses operator, `createCircle`, `addMember`, `startCircle`, `recordPayment`, fungsi baca, `dueDate`, `recipientOf`, `penaltyDue` | Lengkap kecuali kuorum |
+| `contracts/LingkarPay.sol` | Struct, event, error, kontrol akses operator, kelompok, pembayaran, penalti, penutupan periode, pencairan, kuorum, fungsi baca | Lengkap |
 | `test/LingkarPay.test.ts` | Tes kelompok, pembayaran, penutupan periode, pencairan, dan penalti; kuorum masih `it.todo` | Ada |
 | `ignition/modules/LingkarPay.ts` | Modul deploy (Ignition) | Ada |
 | `scripts/new-account.ts` | Membuat akun testnet khusus; private key ke `.secrets/` (tidak dicetak) | Ada |
@@ -87,7 +87,7 @@ Akun yang sama harus dipakai worker (`OPERATOR_PRIVATE_KEY` di `apps/api/.env`),
 | T4 | Deploy ke Sepolia, ekspor alamat dan ABI | Selesai (11 Nov): `0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0` di Sepolia, lihat `deployments/sepolia.json` |
 | T5 | Worker chain terhadap node lokal | Selesai dan terverifikasi (11 Nov): pembayaran Midtrans sandbox menjadi `ANCHORED`, `createCircle`/`recordPayment`/`markPayout` terkonfirmasi |
 | T6 | Uji end to end di Sepolia | Belum |
-| T7 | Kuorum `propose`/`vote` (opsional) | Belum; `it.todo` |
+| T7 | Kuorum (`proposeClosePeriod`, `proposeReplaceMember`, `vote`, `executeProposal`) | Ditulis, menunggu `npm test` |
 | T8 | Dokumentasi | Sebagian |
 
 Keputusan desain yang sudah diterapkan: `markPayout` menutup periode sendiri (butuh semua iuran tercatat on-chain), `applyPenalty` mencatat denda terutang tanpa memindahkan uang, periode berikutnya dibuka di `markPayout`.
@@ -117,3 +117,12 @@ $env:LINGKARPAY_ADDRESS="0x..."; $env:CIRCLE_ID="<chain_circle_id>"; npm run ins
 
 ### Contract di Sepolia
 Alamat: `0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0` (chain 11155111). Lihat di Etherscan: `https://sepolia.etherscan.io/address/0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0`. Alamat dan ABI ada di `deployments/` (dibaca worker dan frontend). Perintah Hardhat ke Sepolia membutuhkan `SEPOLIA_RPC_URL` (keystore) dan `$env:SEPOLIA_PRIVATE_KEY` (dari `.secrets\operator.key`) di jendela PowerShell yang sama.
+
+### Kuorum (T7)
+Dua jenis usulan, keduanya hanya operasional (nominal, periode, penalti, dan urutan giliran tidak bisa diubah kuorum):
+| Usulan | Fungsi | Efek bila disetujui |
+|---|---|---|
+| Tutup periode meski iuran belum lengkap | `proposeClosePeriod(circleId, periodNo)` | Periode berstatus `ReadyPayout`, pencairan boleh jalan |
+| Ganti anggota yang mundur | `proposeReplaceMember(circleId, oldMember, newMember)` | Pengganti mewarisi giliran; iuran yang sudah tercatat di periode berjalan ikut pindah. Ditolak bila giliran anggota itu sudah dicairkan |
+
+Aturan: kuorum = mayoritas mutlak (`anggota / 2 + 1`); `vote(proposalId, memberId, approve)` satu anggota satu suara (diteruskan backend setelah autentikasi); disetujui saat setuju >= kuorum, ditolak bila kuorum mustahil tercapai; batas voting 3 hari (`VOTING_PERIOD`); `executeProposal` hanya untuk usulan yang disetujui, sehingga usulan yang tidak mencapai kuorum tidak berlaku. Belum terhubung ke backend (endpoint dan job outbox untuk usulan/suara belum ada).

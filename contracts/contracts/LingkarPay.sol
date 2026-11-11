@@ -11,7 +11,8 @@ pragma solidity ^0.8.34;
  *
  * Yang SUDAH ada : createCircle, addMember, startCircle, recordPayment, applyPenalty, closePeriod,
  *                  markPayout, fungsi baca, event.
- * Yang TODO      : kuorum (propose/vote), opsional dan dikerjakan terakhir.
+ *                  kuorum: proposeClosePeriod, proposeReplaceMember, vote, executeProposal.
+ * Kuorum: mayoritas mutlak (anggota/2 + 1); suara diteruskan backend (anggota tidak memegang dompet).
  * Lihat contracts/README.md dan docs/DESIGN.md bagian 7 untuk antarmuka dengan backend.
  */
 contract LingkarPay {
@@ -45,6 +46,21 @@ contract LingkarPay {
         uint256 amount; // denda terutang (rupiah), dicatat sebagai audit; contract tidak memindahkan uang
     }
 
+    enum ProposalKind { ClosePeriod, ReplaceMember }
+    enum ProposalStatus { None, Open, Approved, Rejected, Executed }
+
+    struct Proposal {
+        uint256 circleId;
+        ProposalKind kind;
+        ProposalStatus status;
+        uint32 periodNo; // ClosePeriod: periode yang akan ditutup
+        uint32 approvals;
+        uint32 rejections;
+        uint64 deadline; // batas voting
+        bytes32 oldMember; // ReplaceMember: anggota yang diganti
+        bytes32 newMember; // ReplaceMember: pengganti
+    }
+
     // ---------------------------------------------------------------- state
     address public operator;
     uint256 public circleCount;
@@ -55,6 +71,12 @@ contract LingkarPay {
     mapping(uint256 => mapping(uint32 => Period)) private _periods;
     mapping(uint256 => mapping(uint32 => mapping(bytes32 => Payment))) private _payments;
     mapping(uint256 => mapping(uint32 => mapping(bytes32 => Penalty))) private _penalties;
+
+    /// Lama voting sebuah usulan. Setelah itu suara ditolak dan usulan yang belum disetujui tidak berlaku.
+    uint64 public constant VOTING_PERIOD = 3 days;
+    uint256 public proposalCount;
+    mapping(uint256 => Proposal) private _proposals;
+    mapping(uint256 => mapping(bytes32 => bool)) private _voted; // proposalId => memberId => sudah memilih
 
     // --------------------------------------------------------------- events
     event CircleCreated(
@@ -77,6 +99,20 @@ contract LingkarPay {
     event PenaltyApplied(uint256 indexed circleId, uint32 indexed periodNo, bytes32 indexed memberId, uint256 amount);
     event PeriodClosed(uint256 indexed circleId, uint32 indexed periodNo, bytes32 recipient);
     event PayoutMarked(uint256 indexed circleId, uint32 indexed periodNo, bytes32 recipient, bytes32 payoutRefHash);
+    event ProposalCreated(
+        uint256 indexed proposalId,
+        uint256 indexed circleId,
+        ProposalKind kind,
+        uint32 periodNo,
+        bytes32 oldMember,
+        bytes32 newMember,
+        uint64 deadline
+    );
+    event Voted(uint256 indexed proposalId, bytes32 indexed memberId, bool approve);
+    event ProposalApproved(uint256 indexed proposalId);
+    event ProposalRejected(uint256 indexed proposalId);
+    event ProposalExecuted(uint256 indexed proposalId);
+    event MemberReplaced(uint256 indexed circleId, bytes32 indexed oldMember, bytes32 indexed newMember, uint32 turnOrder);
 
     // --------------------------------------------------------------- errors
     error NotOperator();
@@ -93,6 +129,12 @@ contract LingkarPay {
     error AlreadyPaid();
     error PenaltyAlreadyApplied();
     error NoPenalty(); // kelompok tanpa penalti (penaltyPct = 0)
+    error PeriodAlreadyComplete(); // semua sudah lunas, tidak perlu kuorum
+    error MemberAlreadyPaidOut(); // giliran anggota itu sudah dicairkan/siap cair
+    error ProposalNotOpen();
+    error VotingClosed();
+    error AlreadyVoted();
+    error QuorumNotReached(); // usulan belum/tidak disetujui
 
     modifier onlyOperator() {
         if (msg.sender != operator) revert NotOperator();
@@ -230,11 +272,121 @@ contract LingkarPay {
         emit PeriodClosed(circleId, periodNo, recipientOf(circleId, periodNo));
     }
 
-    /// TODO(smart-contract, opsional dan terakhir): kuorum. propose(circleId, kind) dan vote(proposalId, yes).
-    /// Keputusan operasional saja (menunda pencairan karena iuran belum lengkap, mengganti anggota yang mundur).
-    /// Kuorum tidak boleh mengubah parameter terkunci (nominal, periode, penalti, urutan giliran).
-    /// Suara dari anggota diteruskan backend setelah autentikasi (anggota tidak memegang dompet).
-    /// Jalur penutupan periode lewat kuorum akan memanggil _close tanpa syarat paidCount penuh.
+    // ---------------------------------------------------------------- kuorum
+    /// Usulan menutup periode yang berjalan meski iuran belum lengkap (supaya pencairan tidak tertahan).
+    /// Tanpa usulan yang disetujui, penutupan saat iuran belum lengkap ditolak (closePeriod/markPayout).
+    function proposeClosePeriod(uint256 circleId, uint32 periodNo) external onlyOperator returns (uint256 proposalId) {
+        Circle storage c = _circles[circleId];
+        if (c.status != CircleStatus.Active) revert WrongStatus();
+        Period storage p = _periods[circleId][periodNo];
+        if (p.status != PeriodStatus.Running) revert PeriodNotRunning();
+        if (p.paidCount == c.memberCount) revert PeriodAlreadyComplete();
+        proposalId = _newProposal(circleId, ProposalKind.ClosePeriod, periodNo, bytes32(0), bytes32(0));
+    }
+
+    /// Usulan mengganti anggota yang mundur. Pengganti mewarisi gilirannya. Hanya untuk anggota yang
+    /// gilirannya belum dicairkan. Nominal, periode, penalti, dan urutan giliran tetap tidak berubah.
+    function proposeReplaceMember(uint256 circleId, bytes32 oldMember, bytes32 newMember)
+        external
+        onlyOperator
+        returns (uint256 proposalId)
+    {
+        if (_circles[circleId].status != CircleStatus.Active) revert WrongStatus();
+        if (newMember == bytes32(0)) revert InvalidParams();
+        if (_isMember[circleId][newMember]) revert AlreadyMember();
+        uint32 turn = _turnOf(circleId, oldMember); // revert NotMember bila bukan anggota
+        _requireNotPaidOut(circleId, turn);
+        proposalId = _newProposal(circleId, ProposalKind.ReplaceMember, 0, oldMember, newMember);
+    }
+
+    /// Suara satu anggota (diteruskan backend setelah autentikasi). Satu anggota satu suara per usulan.
+    /// Disetujui bila setuju >= kuorum; ditolak bila kuorum sudah mustahil tercapai.
+    function vote(uint256 proposalId, bytes32 memberId, bool approve) external onlyOperator {
+        Proposal storage pr = _proposals[proposalId];
+        if (pr.status != ProposalStatus.Open) revert ProposalNotOpen();
+        if (block.timestamp > pr.deadline) revert VotingClosed();
+        if (!_isMember[pr.circleId][memberId]) revert NotMember();
+        if (_voted[proposalId][memberId]) revert AlreadyVoted();
+
+        _voted[proposalId][memberId] = true;
+        if (approve) pr.approvals += 1;
+        else pr.rejections += 1;
+        emit Voted(proposalId, memberId, approve);
+
+        uint32 memberCount = _circles[pr.circleId].memberCount;
+        uint32 quorum = memberCount / 2 + 1;
+        if (pr.approvals >= quorum) {
+            pr.status = ProposalStatus.Approved;
+            emit ProposalApproved(proposalId);
+        } else if (pr.rejections > memberCount - quorum) {
+            pr.status = ProposalStatus.Rejected;
+            emit ProposalRejected(proposalId);
+        }
+    }
+
+    /// Menjalankan usulan yang sudah disetujui. Usulan yang belum disetujui (kuorum tidak tercapai,
+    /// ditolak, atau melewati batas waktu) tidak berlaku dan tidak bisa dieksekusi.
+    function executeProposal(uint256 proposalId) external onlyOperator {
+        Proposal storage pr = _proposals[proposalId];
+        if (pr.status != ProposalStatus.Approved) revert QuorumNotReached();
+        Circle storage c = _circles[pr.circleId];
+        if (c.status != CircleStatus.Active) revert WrongStatus();
+
+        pr.status = ProposalStatus.Executed;
+        if (pr.kind == ProposalKind.ClosePeriod) {
+            Period storage p = _periods[pr.circleId][pr.periodNo];
+            if (p.status != PeriodStatus.Running) revert PeriodNotRunning();
+            _close(pr.circleId, pr.periodNo, p);
+        } else {
+            _replaceMember(pr.circleId, pr.oldMember, pr.newMember, c.memberCount);
+        }
+        emit ProposalExecuted(proposalId);
+    }
+
+    function _newProposal(uint256 circleId, ProposalKind kind, uint32 periodNo, bytes32 oldMember, bytes32 newMember)
+        private
+        returns (uint256 proposalId)
+    {
+        proposalId = ++proposalCount;
+        uint64 deadline = uint64(block.timestamp) + VOTING_PERIOD;
+        _proposals[proposalId] = Proposal(circleId, kind, ProposalStatus.Open, periodNo, 0, 0, deadline, oldMember, newMember);
+        emit ProposalCreated(proposalId, circleId, kind, periodNo, oldMember, newMember, deadline);
+    }
+
+    /// Nomor giliran (1..n) seorang anggota; revert NotMember bila bukan anggota.
+    function _turnOf(uint256 circleId, bytes32 memberId) private view returns (uint32) {
+        bytes32[] storage m = _members[circleId];
+        for (uint32 i = 0; i < m.length; i++) {
+            if (m[i] == memberId) return i + 1;
+        }
+        revert NotMember();
+    }
+
+    function _requireNotPaidOut(uint256 circleId, uint32 turn) private view {
+        PeriodStatus ts = _periods[circleId][turn].status;
+        if (ts == PeriodStatus.ReadyPayout || ts == PeriodStatus.Done) revert MemberAlreadyPaidOut();
+    }
+
+    function _replaceMember(uint256 circleId, bytes32 oldMember, bytes32 newMember, uint32 memberCount) private {
+        if (_isMember[circleId][newMember]) revert AlreadyMember();
+        uint32 turn = _turnOf(circleId, oldMember);
+        _requireNotPaidOut(circleId, turn);
+
+        _members[circleId][turn - 1] = newMember;
+        _isMember[circleId][oldMember] = false;
+        _isMember[circleId][newMember] = true;
+
+        // Iuran yang sudah tercatat di periode berjalan ikut pindah ke anggota baru (paidCount tetap).
+        // Riwayat periode yang sudah selesai tetap atas nama anggota lama.
+        for (uint32 n = 1; n <= memberCount; n++) {
+            PeriodStatus s = _periods[circleId][n].status;
+            if ((s == PeriodStatus.Running || s == PeriodStatus.ReadyPayout) && _payments[circleId][n][oldMember].paid) {
+                _payments[circleId][n][newMember] = _payments[circleId][n][oldMember];
+                delete _payments[circleId][n][oldMember];
+            }
+        }
+        emit MemberReplaced(circleId, oldMember, newMember, turn);
+    }
 
     // ------------------------------------------------------------ fungsi baca
     function getCircle(uint256 circleId) external view returns (Circle memory) {
@@ -255,6 +407,19 @@ contract LingkarPay {
 
     function getPenalty(uint256 circleId, uint32 periodNo, bytes32 memberId) external view returns (Penalty memory) {
         return _penalties[circleId][periodNo][memberId];
+    }
+
+    function getProposal(uint256 proposalId) external view returns (Proposal memory) {
+        return _proposals[proposalId];
+    }
+
+    function hasVoted(uint256 proposalId, bytes32 memberId) external view returns (bool) {
+        return _voted[proposalId][memberId];
+    }
+
+    /// Kuorum = mayoritas mutlak anggota.
+    function quorumOf(uint256 circleId) external view returns (uint32) {
+        return _circles[circleId].memberCount / 2 + 1;
     }
 
     /// Tenggat periode = waktu mulai + periodNo * periodDays hari.

@@ -330,6 +330,147 @@ describe("LingkarPay", async function () {
     });
   });
 
-  // TODO(smart-contract, opsional dan terakhir)
-  it.todo("kuorum tidak tercapai: keputusan tidak berlaku (propose/vote)");
+  // ------------------------------------------------------------------- kuorum (T7)
+  describe("kuorum", () => {
+    const PS = { Open: 1, Approved: 2, Rejected: 3, Executed: 4 } as const;
+    const VOTING = 3 * 24 * 3600;
+
+    /** 4 anggota (kuorum 3); anggota 1 dan 2 sudah bayar periode 1, anggota 3 dan 4 belum. */
+    async function deployPartial() {
+      const c = await deployStarted(4);
+      await c.write.recordPayment([1n, 1, memberId("m_test1"), REF(1), 1700000000n]);
+      await c.write.recordPayment([1n, 1, memberId("m_test2"), REF(2), 1700000000n]);
+      return c;
+    }
+    const m = (i: number) => memberId(`m_test${i}`);
+    const proposalStatus = async (c: Contract, id = 1n) => (await c.read.getProposal([id])).status;
+
+    it("kuorum = mayoritas mutlak anggota", async function () {
+      const c2 = await deployStarted(2);
+      const c3 = await deployStarted(3);
+      const c4 = await deployStarted(4);
+      assert.equal(await c2.read.quorumOf([1n]), 2);
+      assert.equal(await c3.read.quorumOf([1n]), 2);
+      assert.equal(await c4.read.quorumOf([1n]), 3);
+    });
+
+    it("usulan tutup periode ditolak bila sudah lengkap, periode belum berjalan, atau bukan operator", async function () {
+      const c = await deployStarted(2);
+      await payPeriod(c, 1);
+      await viem.assertions.revertWithCustomError(c.write.proposeClosePeriod([1n, 1]), c, "PeriodAlreadyComplete");
+      await viem.assertions.revertWithCustomError(c.write.proposeClosePeriod([1n, 2]), c, "PeriodNotRunning");
+      const [, other] = await viem.getWalletClients();
+      await viem.assertions.revertWithCustomError(c.write.proposeClosePeriod([1n, 1], { account: other.account }), c, "NotOperator");
+    });
+
+    it("tanpa kuorum: penutupan saat iuran belum lengkap ditolak", async function () {
+      const c = await deployPartial();
+      await viem.assertions.revertWithCustomError(c.write.closePeriod([1n, 1]), c, "PeriodNotComplete");
+      await viem.assertions.revertWithCustomError(c.write.markPayout([1n, 1, PAYOUT(1)]), c, "PeriodNotComplete");
+    });
+
+    it("usulan disetujui saat kuorum tercapai, dieksekusi, lalu pencairan berjalan walau belum semua lunas", async function () {
+      const c = await deployPartial();
+      await viem.assertions.emit(c.write.proposeClosePeriod([1n, 1]), c, "ProposalCreated");
+      const pr = await c.read.getProposal([1n]);
+      assert.equal(pr.kind, 0); // ClosePeriod
+      assert.equal(pr.periodNo, 1);
+      assert.ok(pr.deadline > 0n);
+      assert.equal(await proposalStatus(c), PS.Open);
+
+      await c.write.vote([1n, m(1), true]);
+      await c.write.vote([1n, m(2), true]);
+      // 2 dari kuorum 3: belum berlaku
+      await viem.assertions.revertWithCustomError(c.write.executeProposal([1n]), c, "QuorumNotReached");
+
+      await viem.assertions.emitWithArgs(c.write.vote([1n, m(3), true]), c, "ProposalApproved", [1n]);
+      assert.equal(await proposalStatus(c), PS.Approved);
+
+      await viem.assertions.emitWithArgs(c.write.executeProposal([1n]), c, "PeriodClosed", [1n, 1, m(1)]);
+      assert.equal(await proposalStatus(c), PS.Executed);
+      assert.equal(await periodStatus(c, 1), PeriodStatus.ReadyPayout);
+
+      // pencairan sekarang boleh walau iuran belum lengkap; periode berikutnya dibuka
+      await c.write.markPayout([1n, 1, PAYOUT(1)]);
+      assert.equal(await periodStatus(c, 1), PeriodStatus.Done);
+      assert.equal(await periodStatus(c, 2), PeriodStatus.Running);
+    });
+
+    it("satu anggota satu suara; bukan anggota tidak boleh memilih; usulan harus terbuka", async function () {
+      const c = await deployPartial();
+      await c.write.proposeClosePeriod([1n, 1]);
+      await c.write.vote([1n, m(1), true]);
+      assert.equal(await c.read.hasVoted([1n, m(1)]), true);
+      await viem.assertions.revertWithCustomError(c.write.vote([1n, m(1), true]), c, "AlreadyVoted");
+      await viem.assertions.revertWithCustomError(c.write.vote([1n, memberId("m_asing"), true]), c, "NotMember");
+      await viem.assertions.revertWithCustomError(c.write.vote([99n, m(1), true]), c, "ProposalNotOpen");
+    });
+
+    it("ditolak bila kuorum mustahil tercapai; usulan yang ditolak tidak bisa dieksekusi", async function () {
+      const c = await deployPartial(); // 4 anggota, kuorum 3, maksimal 1 penolak
+      await c.write.proposeClosePeriod([1n, 1]);
+      await c.write.vote([1n, m(1), false]);
+      assert.equal(await proposalStatus(c), PS.Open);
+      await viem.assertions.emitWithArgs(c.write.vote([1n, m(2), false]), c, "ProposalRejected", [1n]);
+      assert.equal(await proposalStatus(c), PS.Rejected);
+      await viem.assertions.revertWithCustomError(c.write.vote([1n, m(3), true]), c, "ProposalNotOpen");
+      await viem.assertions.revertWithCustomError(c.write.executeProposal([1n]), c, "QuorumNotReached");
+    });
+
+    it("kuorum tidak tercapai sebelum batas waktu: suara ditolak dan keputusan tidak berlaku", async function () {
+      const c = await deployPartial();
+      await c.write.proposeClosePeriod([1n, 1]);
+      await c.write.vote([1n, m(1), true]);
+      await c.write.vote([1n, m(2), true]);
+      await networkHelpers.time.increase(VOTING + 10);
+      await viem.assertions.revertWithCustomError(c.write.vote([1n, m(3), true]), c, "VotingClosed");
+      await viem.assertions.revertWithCustomError(c.write.executeProposal([1n]), c, "QuorumNotReached");
+      assert.equal(await periodStatus(c, 1), PeriodStatus.Running);
+    });
+
+    it("ganti anggota: pengganti mewarisi giliran dan iuran yang sudah tercatat di periode berjalan", async function () {
+      const c = await deployPartial(); // anggota 2 sudah bayar periode 1
+      const baru = memberId("m_baru");
+      await c.write.proposeReplaceMember([1n, m(2), baru]);
+      await c.write.vote([1n, m(1), true]);
+      await c.write.vote([1n, m(3), true]);
+      await viem.assertions.emitWithArgs(c.write.vote([1n, m(4), true]), c, "ProposalApproved", [1n]);
+      await viem.assertions.emitWithArgs(c.write.executeProposal([1n]), c, "MemberReplaced", [1n, m(2), baru, 2]);
+
+      assert.deepEqual(await c.read.getMembers([1n]), [m(1), baru, m(3), m(4)]);
+      assert.equal(await c.read.recipientOf([1n, 2]), baru); // giliran periode 2 kini milik pengganti
+      assert.equal((await c.read.getPayment([1n, 1, baru])).paid, true); // iuran ikut pindah
+      assert.equal((await c.read.getPayment([1n, 1, m(2)])).paid, false);
+      assert.equal((await c.read.getPeriod([1n, 1])).paidCount, 2); // jumlah lunas tidak berubah
+      // anggota lama tidak bisa lagi mencatat iuran
+      await viem.assertions.revertWithCustomError(
+        c.write.recordPayment([1n, 1, m(2), REF(50), 1700000000n]),
+        c,
+        "NotMember",
+      );
+    });
+
+    it("ganti anggota ditolak: pengganti sudah anggota, id kosong, atau giliran sudah dicairkan", async function () {
+      const c = await deployStarted(2);
+      await viem.assertions.revertWithCustomError(c.write.proposeReplaceMember([1n, m(1), m(2)]), c, "AlreadyMember");
+      await viem.assertions.revertWithCustomError(
+        c.write.proposeReplaceMember([1n, m(1), stringToHex("", { size: 32 })]),
+        c,
+        "InvalidParams",
+      );
+      await viem.assertions.revertWithCustomError(
+        c.write.proposeReplaceMember([1n, memberId("m_asing"), memberId("m_baru")]),
+        c,
+        "NotMember",
+      );
+      // anggota 1 sudah menerima pencairan periode 1: tidak boleh diganti
+      await payPeriod(c, 1);
+      await c.write.markPayout([1n, 1, PAYOUT(1)]);
+      await viem.assertions.revertWithCustomError(
+        c.write.proposeReplaceMember([1n, m(1), memberId("m_baru")]),
+        c,
+        "MemberAlreadyPaidOut",
+      );
+    });
+  });
 });
