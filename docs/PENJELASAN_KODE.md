@@ -161,6 +161,18 @@ PENDING ─▶ SETTLED ─▶ ANCHORED          (tercatat di Sepolia)
 ### 3.15 Skrip uji (`scripts/smoke.ps1`, `smoke-scenarios.ps1`)
 Menjalankan alur nyata lewat API dan hanya meminta satu langkah manual (membayar di simulator). `smoke.ps1` (19 pemeriksaan), `-Both` (30, termasuk pencairan), serta skenario e-wallet, kedaluwarsa, dan dibatalkan.
 
+### 3.16 Smart contract (`contracts/contracts/LingkarPay.sol`)
+- **Peran:** aturan arisan dan catatan yang bisa diperiksa semua orang. **Tidak menyimpan uang**; rupiah tetap di gateway (arsitektur pilihan A).
+- **Akses:** hanya `operator` (akun backend) yang boleh mencatat; membaca dan `applyPenalty` boleh siapa pun.
+- **Fungsi:** `createCircle`, `addMember` (urutan giliran = urutan ditambahkan), `startCircle` (mengunci anggota dan parameter), `recordPayment` (satu iuran satu catatan, menandai terlambat), `applyPenalty` (mencatat denda terutang, sekali per anggota per periode, rumus sama dengan backend), `closePeriod`, `markPayout` (menutup periode sendiri, membuka periode berikutnya, menutup kelompok di periode terakhir).
+- **Aturan yang ditegakkan dan dites (28 test):** non-operator ditolak, pencatatan ganda ditolak, parameter terkunci setelah mulai, penerima sesuai urutan terkunci, penutupan hanya bila semua lunas, denda seragam.
+- **Data di chain:** hanya `memberId` (bytes32 dari ID samaran), hash referensi pembayaran (`refHash`), dan hash pencairan; tanpa data pribadi.
+
+### 3.17 Worker chain (`apps/api/src/chain/worker.ts`)
+- **Peran:** menjembatani outbox ke contract. Loop: `claimJobs` → kirim transaksi (satu per satu dari akun operator) → tunggu receipt → `markJobConfirmed` atau `markCircleCreated`; gagal → `markJobFailed` (diulang bertahap).
+- **Satu job `createCircle`** menghasilkan beberapa transaksi: `createCircle`, `addMember` per anggota sesuai urutan giliran, lalu `startCircle`; id kelompok on-chain disimpan ke `circles.chain_circle_id`, yang membuka job pembayaran kelompok itu.
+- **Konfigurasi** di `.env`: `CHAIN_NAME` (hardhat atau sepolia), RPC, akun operator, alamat contract.
+
 ## 4. Satu alur dari awal sampai akhir (untuk didemokan)
 | # | Kejadian | Kode yang bekerja | Hasil yang terlihat |
 |---|---|---|---|
@@ -173,7 +185,7 @@ Menjalankan alur nyata lewat API dan hanya meminta satu langkah manual (membayar
 | 7 | Semua anggota lunas | `periods.ts` | Periode `ready_payout` |
 | 8 | Operator mencairkan | `payouts.ts` | Rp20.000 (tanpa biaya admin), periode 2 dibuka |
 | 9 | Rekonsiliasi | `reconciliation.ts` | Selisih 0, `issues=0` |
-| 10 | (Jalur kontrak) worker mencatat ke Sepolia | `claimJobs` → contract → `markJobConfirmed` | `ANCHORED` |
+| 10 | Worker mencatat ke Sepolia | `worker.ts`: `claimJobs` → contract → `markJobConfirmed` | `ANCHORED`; hash transaksi di Etherscan (`BUKTI_SEPOLIA.md`) |
 
 ## 5. Keputusan desain dan alasannya
 | Keputusan | Alasan |
@@ -204,7 +216,7 @@ Menjalankan alur nyata lewat API dan hanya meminta satu langkah manual (membayar
 | Apa peran AI? | Lihat `docs/AI_STATEMENT.md`: AI membantu merancang dan menulis draf; semua dijalankan dan diverifikasi sendiri; kesalahan AI yang ditemukan dicatat. |
 
 ## 7. Jujur soal batasan (jangan diklaim lebih)
-- **Modul chain dan contract adalah jalur lain.** Dari sisi backend, job sudah antre dan antarmukanya lengkap, tetapi pencatatan ke Sepolia baru bisa didemokan penuh setelah worker mereka jalan. Kerangka yang kusiapkan belum dikompilasi.
+- **Contract dan worker sudah terbukti di Sepolia** (`docs/BUKTI_SEPOLIA.md`), tetapi kuorum (`propose`/`vote`) belum dikerjakan, dan worker belum idempoten untuk `createCircle` bila mati di tengah jalan.
 - **Iris belum diuji** (butuh akun sandbox khusus). Pencairan memakai simulasi.
 - **Penalti keterlambatan** terbukti di tes otomatis, belum di transaksi sandbox sungguhan.
 - **Penalti di-snapshot** saat order dibuat (batasan yang diketahui).

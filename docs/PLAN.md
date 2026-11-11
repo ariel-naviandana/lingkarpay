@@ -3,7 +3,7 @@
 Acuan: 8 November 2026. Tenggat: progress report di kelas sebelum 24 November, business case 24 November, pembekuan prototipe 25 November, presentasi 26 November sampai 15 Desember (pengurangan nilai mulai 3 Desember).
 
 ## Ringkasan
-Seluruh tugas jalur payment gateway sudah selesai dan terverifikasi di komputer pengembang dan di Midtrans sandbox: `npm run typecheck` bersih, `npm test` 87 lulus, dua smoke test alur penuh lolos, dan lima skenario pembayaran terbukti di sandbox sungguhan. Yang tersisa hanya hal opsional dan hal yang bergantung pada jalur lain (lihat bagian bawah).
+Seluruh tugas jalur payment gateway sudah selesai dan terverifikasi di komputer pengembang dan di Midtrans sandbox: `npm run typecheck` bersih, `npm test` 87 lulus, dua smoke test alur penuh lolos, dan lima skenario pembayaran terbukti di sandbox sungguhan. Alur lengkap sampai tercatat di Ethereum Sepolia juga sudah terbukti (`docs/BUKTI_SEPOLIA.md`). Yang tersisa hanya hal opsional dan hal yang bergantung pada jalur lain (lihat bagian bawah).
 
 ## Langkah pengerjaan
 | # | Langkah | Status | Bukti |
@@ -48,7 +48,6 @@ Skenario pembayaran di Midtrans sandbox:
 ## Belum dibuktikan atau opsional
 - **Iris (payout sandbox):** butuh akun sandbox Iris dan dua kunci. Simulasi pencairan sudah memenuhi alur tugas.
 - **Rekonsiliasi `live=true`** (cek ke Status API): kodenya ada, belum dicoba.
-- **Konsumsi outbox oleh modul chain:** job `createCircle`, `recordPayment`, `markPayout` berhenti di status `queued` sampai worker dari jalur smart contract ada (kerangka sudah disiapkan).
 - **Penalti keterlambatan di sandbox:** terbukti di tes otomatis, belum pada transaksi sandbox sungguhan (tenggat di smoke test 7 hari).
 
 ## Antarmuka dengan jalur lain
@@ -57,8 +56,11 @@ Skenario pembayaran di Midtrans sandbox:
 - **Business case:** angka prototipe di `docs/business-case/README.md`.
 - Keputusan bersama yang masih terbuka: apakah `markPayout` di contract menutup periode sendiri, atau worker memanggil `closePeriod` lebih dulu.
 
-## Kerangka untuk jalur lain (belum dikompilasi atau dijalankan)
-`contracts/` (contract inti, tes dasar, deploy), `apps/api/src/chain/worker.example.ts` (worker `viem`), `apps/web/` (Vite + React). Bagian rumit ditandai `TODO(smart-contract)` dan `TODO(frontend)` sebagai pekerjaan jalur masing-masing.
+## Smart contract dan modul chain
+Terverifikasi end to end di Sepolia (11 Nov 2026): contract `0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0`, 28 test contract lulus, worker (`apps/api/src/chain/worker.ts`) mencatat `createCircle`, `recordPayment`, dan `markPayout`, order menjadi `ANCHORED`. Rincian dan hash transaksi: `docs/BUKTI_SEPOLIA.md`. Yang masih tersisa: kuorum (`propose`/`vote`, opsional), idempotensi `createCircle` pada worker, dan verifikasi contract di Etherscan (opsional).
+
+## Frontend (kerangka, belum dijalankan)
+`apps/web/` (Vite + React) disiapkan sebagai kerangka; halaman lanjutan ditandai `TODO(frontend)` sebagai pekerjaan jalur frontend.
 
 ## Catatan teknis yang berdampak
 - **Signature Secret Key.** Signature notifikasi dan Status API dihitung dari Signature Secret Key (`MIDTRANS_SIGNATURE_KEY`), bukan Server Key.

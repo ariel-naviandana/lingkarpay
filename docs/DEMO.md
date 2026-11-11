@@ -32,7 +32,7 @@ Dari `apps\api`. Semuanya di Midtrans sandbox; di halaman Snap pilih Bank Transf
 | Kedaluwarsa | `smoke-scenarios.ps1 -Scenario Expire -ApiExpire` | Order EXPIRED, anggota bisa membayar lagi |
 | Dibatalkan | `smoke-scenarios.ps1 -Scenario Cancel -ApiCancel` | Order FAILED, anggota bisa membayar lagi |
 
-Catatan: bagian "tercatat di blockchain" (langkah 8) hanya bisa didemokan penuh setelah worker chain dari jalur smart contract berjalan; sampai saat itu tunjukkan job `queued` di outbox dan jelaskan alurnya.
+Bagian "tercatat di blockchain" (langkah 8) bisa didemokan penuh di Sepolia: nyalakan `npm run chain:worker` dengan `.env` yang menunjuk ke Sepolia, lalu setelah order `ANCHORED` buka `https://sepolia.etherscan.io/address/0xF3Fde971c32960224395ceB9F0b5712dcFFc06A0` (tab Transactions) dan jalankan `npm run inspect` di folder `contracts`. Satu transaksi di Sepolia butuh sekitar 12 detik, jadi siapkan screenshot dan video cadangan. Bukti dan perintah: `docs/BUKTI_SEPOLIA.md`.
 
 ## Jika ada yang gagal
 | Masalah | Tindakan |
