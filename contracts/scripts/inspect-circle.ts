@@ -15,6 +15,8 @@ const c = await viem.getContractAt("LingkarPay", address);
 
 const CIRCLE_STATUS = ["None", "Draft", "Active", "Completed"];
 const PERIOD_STATUS = ["Scheduled", "Running", "ReadyPayout", "Done"];
+const PROPOSAL_KIND = ["ClosePeriod", "ReplaceMember"];
+const PROPOSAL_STATUS = ["None", "Open", "Approved", "Rejected", "Executed"];
 const ref = (h: Hex) => hexToString(h, { size: 32 });
 
 const circle = await c.read.getCircle([circleId]);
@@ -33,5 +35,17 @@ for (let n = 1; n <= members.length; n++) {
   for (const m of members) {
     const pay = await c.read.getPayment([circleId, n, m]);
     if (pay.paid) console.log(`  ${ref(m)}: lunas, refHash ${pay.refHash}`);
+  }
+
+  // Usulan kuorum untuk periode ini (bila ada)
+  const proposalId = await c.read.proposalOfPeriod([circleId, n]);
+  if (proposalId !== 0n) {
+    const pr = await c.read.getProposal([proposalId]);
+    console.log(
+      `  usulan #${proposalId} (${PROPOSAL_KIND[pr.kind]}): ${PROPOSAL_STATUS[pr.status]} | setuju ${pr.approvals}, tolak ${pr.rejections}, kuorum ${await c.read.quorumOf([circleId])}`,
+    );
+    for (const m of members) {
+      if (await c.read.hasVoted([proposalId, m])) console.log(`    suara tercatat: ${ref(m)}`);
+    }
   }
 }

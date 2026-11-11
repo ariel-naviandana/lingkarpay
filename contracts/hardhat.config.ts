@@ -15,6 +15,13 @@ export default defineConfig({
       },
     },
   },
+  // Verifikasi kode contract di Etherscan (supaya nama fungsi terbaca). API key gratis dari etherscan.io,
+  // disimpan di keystore Hardhat: npx hardhat keystore set ETHERSCAN_API_KEY
+  verify: {
+    etherscan: {
+      apiKey: configVariable("ETHERSCAN_API_KEY"),
+    },
+  },
   networks: {
     hardhatMainnet: { type: "edr-simulated", chainType: "l1" },
     // Node lokal: jalankan `npm run node` di terminal lain, lalu `npm run deploy:local`.

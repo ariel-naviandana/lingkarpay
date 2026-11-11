@@ -12,7 +12,8 @@
     "deploy:sepolia": "hardhat ignition deploy --network sepolia --deployment-id sepolia-v2 ignition/modules/LingkarPay.ts",
     "export:sepolia": "hardhat run scripts/export-deployment.ts",
     "node": "hardhat node",
-    "inspect": "hardhat run scripts/inspect-circle.ts"
+    "inspect": "hardhat run scripts/inspect-circle.ts",
+    "verify:sepolia": "hardhat verify --network sepolia"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ignition": "^3.1.9",
