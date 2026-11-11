@@ -51,7 +51,20 @@ Yang terlihat:
 - Periode 2 terbuka otomatis setelah pencairan periode 1.
 - Di chain hanya ID samaran (`m_xxxxxxxx`); tidak ada nama, email, atau nomor rekening.
 
-Hash transaksi tiap langkah ada di tab Transactions contract (link Etherscan di atas) dan di database (`chain_transactions`).
+### Hash transaksi tiap langkah (v2)
+Dari tabel `chain_transactions` di database; buka dengan `https://sepolia.etherscan.io/tx/<hash>`.
+
+| Job | Hash transaksi |
+|---|---|
+| `createCircle` (hash yang dicatat adalah transaksi `startCircle`, langkah terakhir pembuatan kelompok) | `0x14562ec3472a6d39e40f4534dc514b15e251007dc51b7cdc0984ab6746574daa` |
+| `recordPayment` (iuran anggota A) | `0xc52f44263ce33df4ef25b5bb749be11f910517598bc8df525161b8cf3b3b80f8` |
+| `proposeClosePeriod` (usulan tutup periode) | `0x5c37ae52659acf04d815369f634d9fd5a228f13aaa9923c85d90cdaa9bd4ce39` |
+| `castVote` (suara pertama, setuju) | `0x3c37e5920999103b28a7f2f802bec278e1f487c04167774f23cc71fbc9ce656c` |
+| `castVote` (suara kedua, setuju: kuorum tercapai) | `0x4c07ae73a9824d5b291f0aef91ede2e569f641e120a75e16781baa353a72d8b2` |
+| `executeProposal` | `0x0b73186add2765ec86dfd39b1365dfcac67eca40be2b47decc8142c6ce8c6ed5` |
+| `markPayout` (pencairan periode 1) | `0x74dfa01e4be84396c586730155872389d09e3d826b75a9b25337e62ab9294c0d` |
+
+Urutan di Etherscan mengikuti urutan job: usulan dibuat, dua suara, eksekusi, baru pencairan. Pencairan tidak bisa mendahului eksekusi karena `markPayout` ditahan sampai semua job kuorum terkonfirmasi (dan contract menolak pencairan periode yang belum lengkap dan belum ditutup kuorum). Transaksi `addMember` (tiga anggota) ada di tab Transactions contract (link di atas) tetapi tidak dicatat per job.
 
 ## Bukti v1: alur pembayaran tanpa kuorum (riwayat)
 Kelompok 2 anggota, kedua anggota membayar (Midtrans sandbox), periode 1 dicairkan. Tujuh transaksi dari operator ke contract v1:
