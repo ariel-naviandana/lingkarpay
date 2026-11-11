@@ -86,7 +86,7 @@ Akun yang sama harus dipakai worker (`OPERATOR_PRIVATE_KEY` di `apps/api/.env`),
 | T3 | Tes skenario proposal Tabel 19 | Ditulis, menunggu `npm test` |
 | T4 | Deploy ke Sepolia, ekspor alamat dan ABI | Belum |
 | T5 | Worker chain terhadap node lokal | Belum (kerangka `worker.example.ts` sudah disesuaikan) |
-| T6 | Uji ujung ke ujung di Sepolia | Belum |
+| T6 | Uji end to end di Sepolia | Belum |
 | T7 | Kuorum `propose`/`vote` (opsional) | Belum; `it.todo` |
 | T8 | Dokumentasi | Sebagian |
 
@@ -105,4 +105,4 @@ Keputusan desain yang sudah diterapkan: `markPayout` menutup periode sendiri (bu
 | 5 | Worker idempoten: simpan id kelompok on-chain begitu event terbaca, dan cek sebelum membuat kelompok ulang bila worker restart. |
 
 ## Rencana tahapan
-T0 siapkan lingkungan dan kompilasi kerangka; T1 `closePeriod` + `markPayout`; T2 `applyPenalty`; T3 tes sesuai proposal Tabel 19; T4 deploy Sepolia; T5 worker terhadap node lokal; T6 uji ujung ke ujung di Sepolia; T7 kuorum (opsional); T8 dokumentasi. Target: T5 dapat ditunjukkan sebelum progress report (sebelum 24 November), pembekuan 25 November.
+T0 siapkan lingkungan dan kompilasi kerangka; T1 `closePeriod` + `markPayout`; T2 `applyPenalty`; T3 tes sesuai proposal Tabel 19; T4 deploy Sepolia; T5 worker terhadap node lokal; T6 uji end to end di Sepolia; T7 kuorum (opsional); T8 dokumentasi. Target: T5 dapat ditunjukkan sebelum progress report (sebelum 24 November), pembekuan 25 November.

@@ -43,7 +43,7 @@ Skrip npm `chain:worker` di `apps/api/package.json`, dependensi `viem`, tes (bol
 ## Mencoba tanpa contract
 Untuk memeriksa alur dari sisi backend, simulasikan worker lewat REPL atau skrip kecil yang memanggil `claimJobs` lalu `markCircleCreated`/`markJobConfirmed` dengan hash palsu; status order dan rekonsiliasi akan ikut berubah.
 
-## Worker (sudah disiapkan, menunggu uji ujung ke ujung)
+## Worker (sudah disiapkan, menunggu uji end to end)
 `worker.ts` memakai `viem`: loop `claimJobs`, penanganan job `createCircle`/`recordPayment`/`markPayout`, pelaporan hasil ke outbox. Konfigurasi di `.env` (divalidasi di `src/config.schema.ts`): `CHAIN_NAME` (`hardhat` untuk node lokal, `sepolia`), `CHAIN_RPC_URL`, `OPERATOR_PRIVATE_KEY`, `LINGKARPAY_ADDRESS`. **Belum pernah dijalankan.**
 
 ### Uji terhadap node lokal (T5)

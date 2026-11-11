@@ -60,5 +60,5 @@ Cari `TODO(frontend)` di kode:
 2. Halaman/tombol operator: pencairan (`api.simulatePayout`), laporan rekonsiliasi (`api.reconciliation`).
 3. Portal verifikasi lengkap: status iuran per anggota per periode, penerima, penalti, tautan transaksi ke Etherscan Sepolia.
 4. Tampilan yang layak: pesan error, loading, responsif, penanganan status `SETTLED_PENDING_CHAIN`, callback Snap (`onClose`).
-5. User stories dan kriteria penerimaan (tulis di `docs/`), uji ujung ke ujung, video demo.
+5. User stories dan kriteria penerimaan (tulis di `docs/`), uji end to end, video demo.
 Catatan: portal verifikasi baru berguna setelah contract ter-deploy dan `circles.chain_circle_id` terisi oleh modul chain.
