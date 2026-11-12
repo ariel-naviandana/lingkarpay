@@ -61,7 +61,7 @@ docker compose up -d          # Postgres, di root repo
 cd apps\api; npm install; npm run migrate; npm run dev     # backend, http://localhost:3001
 cd apps\web; npm install; npm run dev                       # frontend, http://localhost:5173 (kerangka)
 ```
-Rincian, termasuk `.env` dan uji dengan Midtrans sandbox: `apps/api/README.md`. Contract: `contracts/README.md`.
+Panduan lengkap dari clone sampai jalan (prasyarat, `.env`, per peran): `docs/SETUP.md`. Rincian, termasuk `.env` dan uji dengan Midtrans sandbox: `apps/api/README.md`. Contract: `contracts/README.md`.
 
 ## Konvensi
 - Satu langkah pekerjaan = satu commit kecil, lalu push. Pesan commit: `feat(api): ...`, `fix(web): ...`, `test(contracts): ...`, `docs: ...`.
