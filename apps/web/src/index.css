@@ -1,0 +1,13 @@
+@import "tailwindcss";
+@theme {
+  --color-forest: #0f3b36;
+  --color-brand: #0f6b58;
+  --color-mint: #dcefe6;
+  --color-cream: #f5f1e8;
+  --color-sand: #ebe4d6;
+  --color-amber-soft: #fbe9c6;
+  --color-ink: #16231f;
+  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+body { @apply bg-cream font-sans text-ink; }

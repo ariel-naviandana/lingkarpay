@@ -1,65 +1,32 @@
-# apps/web — jalur frontend
+# React + TypeScript + Vite
 
-Folder ini milik jalur frontend. Kerangka awal sudah disiapkan (lihat bagian "Kerangka awal" di bawah). Disarankan Vite + React + TypeScript, `viem` untuk membaca contract.
+This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
-## Halaman yang dibutuhkan
-Login/daftar, dashboard kelompok, buat kelompok dan undang anggota, detail kelompok (status periode, siapa sudah bayar, giliran, penalti), halaman bayar iuran (Snap), riwayat pembayaran dan status pencairan, portal verifikasi publik (baca dari contract), opsional halaman operator (rekonsiliasi).
+Currently, two official plugins are available:
 
-## Memakai API backend
-Dokumen: `docs/API.md` (endpoint, bentuk body dan respons), `docs/DESIGN.md`, dan `docs/openapi.yaml` (impor ke Postman, atau buka di editor.swagger.io untuk mencoba endpoint). Backend jalan di `http://localhost:3001`.
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-| Kebutuhan | Endpoint |
-|---|---|
-| Login / daftar | `POST /auth/login`, `POST /auth/register`, `GET /auth/me` (token `Bearer`) |
-| Dashboard dan detail | `GET /circles`, `GET /circles/:id` |
-| Buat, undang, mulai | `POST /circles`, `POST /circles/:id/members`, `POST /circles/:id/start` |
-| Bayar iuran | `GET /public-config` (client key + URL snap.js) → `POST /checkout` → `snap.pay(token)` → polling `GET /orders/:orderId` |
-| Riwayat | `GET /circles/:id/payments` |
-| Operator | `POST /payouts/simulate`, `GET /reports/reconciliation?circleId=` |
-| Portal verifikasi | baca contract langsung; alamat dan ABI dari `contracts/deployments/sepolia.json`, id kelompok dari `chainCircleId` di `GET /circles/:id` |
+## React Compiler
 
-Catatan penting untuk halaman bayar:
-- Status bayar hanya dari `GET /orders/:orderId` (sumber kebenaran: webhook). Halaman redirect Midtrans hanya tampilan.
-- Status order: `PENDING`, `SETTLED`, `SETTLED_PENDING_CHAIN`, `ANCHORED`, `FAILED`, `EXPIRED`. `SETTLED` sudah berarti sah dibayar; `ANCHORED` berarti sudah tercatat di Sepolia.
-- Tampilkan rincian dari respons checkout: `amount`, `penaltyAmount`, `adminFee`, `grossAmount`.
-- Pengguna tidak memegang dompet kripto. Hanya `memberRef` (ID samaran) yang tampil on-chain.
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-## CORS
-Backend belum memasang CORS. Pakai proxy dev Vite agar frontend memanggil `/api` tanpa CORS:
-```ts
-// vite.config.ts
-server: { proxy: { "/api": { target: "http://localhost:3001", rewrite: (p) => p.replace(/^\/api/, "") } } }
+## Expanding the Oxlint configuration
+
+If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+
+```json
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "oxc"],
+  "options": {
+    "typeAware": true
+  },
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+  }
+}
 ```
-Kalau butuh CORS sungguhan, minta jalur payment gateway menambahkan `@fastify/cors`.
 
-## Sebelum bisa mencoba
-Buat data lewat `apps/api/scripts/smoke.ps1`, atau lewat API langsung. Bayar hanya lewat simulator Midtrans (VA).
-
-## Kerangka awal (sudah disiapkan)
-Vite + React + TypeScript. **Belum pernah dijalankan atau dikompilasi**; versi paket dapat disesuaikan. Mulai dengan:
-```powershell
-cd C:\coding\lingkarpay\apps\web
-npm install
-npm run typecheck
-npm run dev          # http://localhost:5173 (backend harus jalan di :3001)
-```
-Salin `.env.example` ke `.env` untuk portal verifikasi.
-
-| File | Isi | Status |
-|---|---|---|
-| `src/api.ts`, `src/types.ts` | Klien API (token Bearer, error seragam) dan tipe dari `docs/openapi.yaml` | Ada |
-| `src/auth.tsx`, `src/pages/Login.tsx` | Login/daftar, sesi di `localStorage` | Ada |
-| `src/pages/Dashboard.tsx` | Daftar kelompok, buat kelompok | Ada |
-| `src/pages/CircleDetail.tsx` | Anggota dan status iuran periode berjalan, undang anggota, mulai kelompok, tombol bayar | Ada (dasar) |
-| `src/components/PayButton.tsx` | Alur Snap: `/public-config` → `/checkout` → `snap.pay` → polling `/orders/:id` | Ada |
-| `src/pages/Verify.tsx` | Portal verifikasi publik: baca contract dengan `viem` | Dasar |
-
-### Yang menjadi pekerjaan jalur ini (TODO)
-Cari `TODO(frontend)` di kode:
-1. Tabel semua periode dan penerimanya; riwayat pembayaran dan status pencairan (`api.payments`).
-2. Halaman/tombol operator: pencairan (`api.simulatePayout`), laporan rekonsiliasi (`api.reconciliation`).
-3. Portal verifikasi lengkap: status iuran per anggota per periode, penerima, penalti, tautan transaksi ke Etherscan Sepolia.
-4. Tampilan yang layak: pesan error, loading, responsif, penanganan status `SETTLED_PENDING_CHAIN`, callback Snap (`onClose`).
-5. User stories dan kriteria penerimaan (tulis di `docs/`), uji end to end, video demo.
-6. Antarmuka kuorum: daftar usulan sebuah kelompok, tombol "usulkan tutup periode", tombol setuju/tolak, dan status (`GET /circles/:id/proposals`, `POST /periods/:periodId/close-proposals`, `POST /proposals/:id/votes`; lihat `docs/API.md`). Tampilkan kuorum, jumlah suara, tenggat, dan status (`open`, `rejected`, `expired`, `executed`).
-Catatan: contract final ter-deploy di Sepolia (`0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2`, alamat dan ABI di `contracts/deployments/`); isi `VITE_CONTRACT_ADDRESS` dengan alamat itu. Portal verifikasi baru berguna bila `circles.chain_circle_id` sudah terisi oleh worker chain. Hasil `getCircle` kini memuat `externalRef` (field tambahan).
+See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.

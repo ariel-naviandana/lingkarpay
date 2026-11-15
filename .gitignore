@@ -30,3 +30,4 @@ contracts/ignition/deployments/chain-31337/
 # Kunci
 *.pem
 *.key
+*.zip
