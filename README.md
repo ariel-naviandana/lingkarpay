@@ -24,7 +24,7 @@ Pembagian orang per jalur: lihat Tabel 25 di proposal. Antarmuka antar jalur dit
 ```
 lingkarpay/
 ├── README.md                  ini
-├── docker-compose.yml         Postgres lokal (port 5433)
+├── docker-compose.yml         Postgres lokal (port 5440)
 ├── apps/
 │   ├── api/                   jalur payment gateway (Fastify + TypeScript + Postgres)
 │   │   ├── src/               config, routes, services, db, test

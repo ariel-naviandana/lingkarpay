@@ -118,7 +118,7 @@ Idempotensi chain: `createCircle` di contract menerima `externalRef` = `keccak25
 - Iris sandbox (opsional, `IRIS_ENABLED=true` + kunci creator & approver): membuat payout lalu approve. Data penerima dummy; nomor rekening tidak disimpan, hanya hash Keccak-256-nya. Bentuk request mengikuti dokumentasi Iris dan **belum diuji** di sandbox kelompok. Notifikasi status payout dari Iris belum ditangani; status berhenti di `APPROVED`.
 
 ## 9. Keputusan yang diambil (bisa diubah)
-- DB: PostgreSQL via Docker Compose (port 5433), akses `pg` + SQL migrasi biasa (tanpa ORM).
+- DB: PostgreSQL via Docker Compose (port 5440), akses `pg` + SQL migrasi biasa (tanpa ORM).
 - Validasi: zod. Auth: token sesi sederhana (scrypt + token acak berhash), cukup untuk sandbox.
 - Kanal bayar: VA bank dan e-wallet saja; QRIS dimatikan.
 - `/status/:orderId` sengaja tanpa auth untuk memudahkan uji spike di sandbox.

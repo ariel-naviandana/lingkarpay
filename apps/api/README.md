@@ -5,7 +5,7 @@ Backend payment gateway (Midtrans sandbox) dan outbox ke modul chain. Rancangan:
 ## Menjalankan (Windows PowerShell)
 ```powershell
 cd C:\coding\lingkarpay
-docker compose up -d                      # Postgres di port 5433
+docker compose up -d                      # Postgres di port 5440
 cd apps\api
 npm install
 npm run typecheck

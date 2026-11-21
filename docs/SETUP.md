@@ -31,7 +31,7 @@ Dari root repo:
 ```powershell
 docker compose up -d
 ```
-Postgres berjalan di port 5433.
+Postgres berjalan di port 5440.
 
 ## 3. Backend
 ```powershell
