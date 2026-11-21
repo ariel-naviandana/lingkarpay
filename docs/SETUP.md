@@ -48,7 +48,7 @@ Lalu:
 ```powershell
 npm run migrate
 npm run typecheck
-npm test            # 101 tes harus lulus
+npm test            # 102 tes harus lulus
 npm run dev         # http://localhost:3001
 ```
 Setiap `.env` berubah, restart `npm run dev` (tidak dimuat ulang otomatis).

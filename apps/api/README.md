@@ -10,7 +10,7 @@ cd apps\api
 npm install
 npm run typecheck
 npm run migrate                           # membuat tabel
-npm test                                  # 101 tes (butuh Postgres)
+npm test                                  # 102 tes (butuh Postgres)
 npm run dev                               # http://localhost:3001
 ```
 

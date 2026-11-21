@@ -15,7 +15,7 @@ Pembagian orang per jalur: lihat Tabel 25 di proposal. Antarmuka antar jalur dit
 ## Status
 | Jalur | Status |
 |---|---|
-| Payment gateway (`apps/api`) | Selesai dan terverifikasi: 101 tes, smoke test (alur penuh dan kuorum), skenario Midtrans sandbox. Rincian: `docs/PLAN.md` |
+| Payment gateway (`apps/api`) | Selesai dan terverifikasi: 102 tes, smoke test (alur penuh dan kuorum), skenario Midtrans sandbox. Rincian: `docs/PLAN.md` |
 | Smart contract (`contracts/`, `apps/api/src/chain/`) | Selesai: contract lengkap termasuk kuorum (40 tes), ter-deploy di Sepolia (v2), worker chain idempoten; terbukti end to end dengan hash transaksi (`docs/BUKTI_SEPOLIA.md`) |
 | Frontend (`apps/web/`) | Kerangka awal disiapkan (belum dijalankan); halaman lanjutan ditandai `TODO(frontend)` |
 | Business case (`docs/business-case/`) | Belum dimulai; daftar isi dan angka prototipe tersedia |

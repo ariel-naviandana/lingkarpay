@@ -19,6 +19,7 @@ Kode error umum: `VALIDATION_ERROR` 400, `UNAUTHORIZED` 401, `FORBIDDEN` 403, `N
 | `POST /circles` | Body `{ name, contributionAmount(>=1000), memberCount(2-50), periodDays, penaltyPct(0-100)=0, adminFee=DEFAULT_ADMIN_FEE }` → 201 kelompok + `myMemberId`. Pembuat otomatis menjadi anggota. Status `draft`. |
 | `GET /circles` | Kelompok milikku → `{ circles: [{..., joinedCount}] }` |
 | `GET /circles/:id` | Detail: `circle`, `myMemberId`, `isCreator`, `members[{memberId, memberRef, name, turnOrder, isMe, currentPayment{status, paid, penaltyDue}}]`, `periods`, `currentPeriod`. Hanya anggota. |
+| `GET /public/circles/:id` | **Tanpa login**, untuk portal verifikasi. Memuat `circle`, `members[{memberId, memberRef, turnOrder, currentPayment{status, paid}}]` (hanya pseudonim, tanpa nama atau email), `periods`, `currentPeriod`. Data dari database backend, bukan dari contract. |
 | `POST /circles/:id/members` | Body `{ email }` (pengguna harus sudah terdaftar). Hanya pembuat, hanya saat `draft`. 409 `CIRCLE_FULL`, `ALREADY_MEMBER`, `CIRCLE_STARTED`. |
 | `POST /circles/:id/start` | Body `{ order?: [memberId,...] }` (urutan giliran; bawaan urutan bergabung). Mengunci urutan dan parameter, membuat semua periode (periode 1 `running`). 409 `CIRCLE_NOT_FULL`. 400 `INVALID_ORDER`. |
 | `GET /circles/:id/periods` | → `{ periods: [{ id, periodNo, dueDate, status, recipientMemberId }] }` |
@@ -88,7 +89,7 @@ Keputusan operasional untuk periode yang iurannya belum lengkap. Hanya anggota k
 
 | | |
 |---|---|
-| `POST /periods/:periodId/close-proposals` | Tanpa body. Periode harus `running` dan iuran belum lengkap. → 201 usulan. 403 `FORBIDDEN` (bukan anggota), 409 `PERIOD_NOT_OPEN`, `PERIOD_COMPLETE`, `PROPOSAL_EXISTS` (sudah ada usulan terbuka untuk periode itu) |
+| `POST /periods/:periodId/close-proposals` | Tanpa body. Periode harus `running` dan iuran belum lengkap. → 201 usulan. 403 `FORBIDDEN` (bukan anggota), 409 `PERIOD_NOT_OPEN`, `NO_FUNDS` (belum ada satu pun iuran masuk), `PERIOD_COMPLETE`, `PROPOSAL_EXISTS` (sudah ada usulan terbuka untuk periode itu) |
 | `GET /circles/:id/proposals` | → `{ proposals: [...] }` |
 | `GET /proposals/:id` | → usulan |
 | `POST /proposals/:id/votes` | Body `{ approve: true/false }`. → 201 usulan terbaru. 403 `FORBIDDEN`, 409 `ALREADY_VOTED`, `PROPOSAL_NOT_OPEN`, `VOTING_CLOSED` |

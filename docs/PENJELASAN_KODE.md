@@ -1,6 +1,6 @@
 # Panduan Menjelaskan Kode — Jalur Payment Gateway
 
-Untuk persiapan progress report dan presentasi. Bacalah berurutan: gambaran besar, peta kode, tiap komponen, satu alur dari awal sampai akhir, lalu tanya-jawab. Angka di sini sudah dicek ke kode: kode backend (`apps/api/src`), 28 endpoint, 13 tabel, 101 tes backend dan 40 tes contract.
+Untuk persiapan progress report dan presentasi. Bacalah berurutan: gambaran besar, peta kode, tiap komponen, satu alur dari awal sampai akhir, lalu tanya-jawab. Angka di sini sudah dicek ke kode: kode backend (`apps/api/src`), 28 endpoint, 13 tabel, 102 tes backend dan 40 tes contract.
 
 ## 1. Gambaran besar
 
@@ -12,7 +12,7 @@ Untuk persiapan progress report dan presentasi. Bacalah berurutan: gambaran besa
 2. **Solusi:** pembayaran tetap lewat kanal yang sudah dikenal (Midtrans), aturan di smart contract.
 3. **Peran backend:** jembatan antara dunia rupiah (Midtrans) dan dunia blockchain. Smart contract tidak bisa melihat dunia luar, jadi backend yang meneruskan kabar "iuran sudah dibayar" secara terpercaya.
 4. **Tiga hal yang dijaga backend:** (a) keaslian: signature Midtrans diverifikasi; (b) ketepatan: tidak ada pembayaran ganda, status tidak bisa mundur, jumlah dicocokkan; (c) ketahanan: kalau blockchain gagal, pembayaran tetap sah dan pencatatan diulang.
-5. **Bukti:** 101 tes backend dan 40 tes contract, smoke test alur penuh dan kuorum, lima skenario di Midtrans sandbox sungguhan, dan alur lengkap tercatat di Ethereum Sepolia dengan hash transaksi yang bisa dibuka di Etherscan (`docs/BUKTI_SEPOLIA.md`).
+5. **Bukti:** 102 tes backend dan 40 tes contract, smoke test alur penuh dan kuorum, lima skenario di Midtrans sandbox sungguhan, dan alur lengkap tercatat di Ethereum Sepolia dengan hash transaksi yang bisa dibuka di Etherscan (`docs/BUKTI_SEPOLIA.md`).
 
 ### Diagram alur
 ```
@@ -40,7 +40,7 @@ Operator → POST /payouts/simulate → pencairan dicatat → periode berikutnya
 | `src/lib/*` | Alat kecil: signature, hash, uang, HTTP klien, error, auth |
 | `src/db/*`, `db/migrations/*` | Koneksi Postgres, transaksi, skema SQL |
 | `src/chain/` | Tempat modul chain (jalur smart contract); kerangka saja |
-| `src/**/*.test.ts`, `src/test/*` | 101 tes (unit dan integrasi) |
+| `src/**/*.test.ts`, `src/test/*` | 102 tes (unit dan integrasi) |
 | `scripts/*.ps1` | Skrip uji alur penuh dan skenario di sandbox |
 
 Aturan arsitektur yang bisa kamu sebut: **route tipis, logika di service, perubahan status hanya lewat satu modul**.
@@ -150,7 +150,7 @@ PENDING ─▶ SETTLED ─▶ ANCHORED          (tercatat di Sepolia)
 ### 3.13 Batalkan dan kedaluwarsakan (`services/orders.ts`)
 `POST /orders/:id/cancel` dan `/expire` memanggil Cancel/Expire API Midtrans lalu menyinkronkan status (hasil `FAILED` atau `EXPIRED`) sehingga anggota bisa membayar lagi. Hanya untuk order yang sudah punya transaksi di Midtrans. Catatan: Expire API menandai sukses dengan kode 407, bukan 200; dan keduanya butuh izin Capability pada server key.
 
-### 3.14 Tes (101 tes backend, 40 tes contract)
+### 3.14 Tes (102 tes backend, 40 tes contract)
 | Jenis | Isi | Bergantung pada |
 |---|---|---|
 | Unit (sekitar 35) | signature, uang, hash (vektor uji Keccak/SHA-256), mesin status (semua kombinasi transisi), penalti, tagihan, konfigurasi | Tidak ada |
@@ -224,7 +224,7 @@ Menjalankan alur nyata lewat API dan hanya meminta satu langkah manual (membayar
 | Biaya gas per transaksi on-chain? | Di Sepolia memakai ETH uji (tanpa biaya riil). Produksi dihitung di business case; mitigasi: pencatatan batch atau layer dua. |
 | Ada biaya admin dan dana minimal? | Biaya admin sudah ada di tagihan (prototipe Rp1.000, asumsi) dan tidak ikut dicairkan. Iuran minimum di API Rp1.000; angka akhir ditetapkan di business case. |
 | Mengapa memakai e-wallet lewat "qris"? | Midtrans melaporkan GoPay lewat QR sebagai `payment_type=qris`. Diuji hanya lewat simulator Midtrans, bukan aplikasi sungguhan. |
-| Berapa yang sudah teruji? | 101 tes backend dan 40 tes contract, smoke test alur penuh (30 pemeriksaan) dan kuorum (15 pemeriksaan), bukti end to end di Sepolia,, dan skenario sandbox: sukses VA, sukses e-wallet, kedaluwarsa, dibatalkan. |
+| Berapa yang sudah teruji? | 102 tes backend dan 40 tes contract, smoke test alur penuh (30 pemeriksaan) dan kuorum (15 pemeriksaan), bukti end to end di Sepolia,, dan skenario sandbox: sukses VA, sukses e-wallet, kedaluwarsa, dibatalkan. |
 | Bagaimana kalau worker mati di tengah pencatatan? | Percobaan ulang melanjutkan dari state contract. `createCircle` memakai `externalRef` sehingga kelompok tidak dibuat ganda; iuran, suara, dan pencairan yang sudah tercatat dikenali dan dianggap sukses bila hash-nya sama. |
 | Bagaimana kalau iuran tidak lengkap dan periode macet? | Anggota mengusulkan menutup periode; mayoritas mutlak (2 dari 3, dst.) harus setuju dalam 3 hari. Aturan yang sama ditegakkan contract, dan tanpa kuorum penutupan ditolak. Pencairan memakai dana yang terkumpul. |
 | Apa peran AI? | Lihat `docs/AI_STATEMENT.md`: AI membantu merancang dan menulis draf; semua dijalankan dan diverifikasi sendiri; kesalahan AI yang ditemukan dicatat. |

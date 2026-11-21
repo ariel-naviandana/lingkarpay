@@ -3,7 +3,7 @@ import { AppError, conflict, forbidden, notFound } from "../lib/errors.js";
 import { randomHex } from "../lib/hash.js";
 import { computePenalty } from "./billing.js";
 import { enqueueCreateCircle } from "./outbox.js";
-import { syncOrderFromGateway } from "./gatewayStatus.js";
+import { syncPendingOrders } from "./gatewayStatus.js";
 
 interface CircleRow {
   id: number;
@@ -136,9 +136,7 @@ export async function getCircleDetail(userId: number, circleId: number) {
       `SELECT order_id FROM orders WHERE period_id = $1 AND status = 'PENDING'`,
       [current.id],
     );
-    for (const po of pendingOrders.rows) {
-      await syncOrderFromGateway(po.order_id).catch(() => undefined);
-    }
+    await syncPendingOrders(pendingOrders.rows.map((o) => o.order_id));
   }
 
   const memberRows = (
@@ -384,9 +382,7 @@ export async function circlePayments(userId: number, circleId: number) {
       WHERE p.circle_id = $1 AND o.status = 'PENDING'`,
     [circleId],
   );
-  for (const po of pendingOrders.rows) {
-    await syncOrderFromGateway(po.order_id).catch(() => undefined);
-  }
+  await syncPendingOrders(pendingOrders.rows.map((o) => o.order_id));
 
   const orders = (
     await pool.query<{

@@ -135,7 +135,11 @@ export async function getTransactionStatus(orderId: string): Promise<GatewayStat
     found,
     httpStatus: res.status,
     data,
-    signatureValid: found ? verifySignature(data, SIGNATURE_KEY) : false,
+    // Respons Status API boleh bertanda tangan Server Key atau Signature Secret Key,
+    // tergantung konfigurasi akun. Keduanya rahasia; salah satu cocok sudah cukup.
+    signatureValid: found
+      ? verifySignature(data, SIGNATURE_KEY) || verifySignature(data, config.MIDTRANS_SERVER_KEY)
+      : false,
   };
 }
 

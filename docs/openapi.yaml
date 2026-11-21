@@ -158,6 +158,16 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
 
+  /public/circles/{id}:
+    get:
+      tags: [Kelompok]
+      summary: Tampilan publik kelompok untuk portal verifikasi (tanpa login, tanpa data pribadi)
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: "circle, members (pseudonim), periods, currentPeriod" }
+        "404": { description: "Kelompok tidak ditemukan", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /circles/{id}/members:
     post:
       tags: [Kelompok]
@@ -424,7 +434,7 @@ paths:
       responses:
         "201": { description: Usulan dibuat, content: { application/json: { schema: { $ref: "#/components/schemas/Proposal" } } } }
         "403": { $ref: "#/components/responses/Error" }
-        "409": { description: "PERIOD_NOT_OPEN, PERIOD_COMPLETE, atau PROPOSAL_EXISTS", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: "PERIOD_NOT_OPEN, NO_FUNDS, PERIOD_COMPLETE, atau PROPOSAL_EXISTS", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /circles/{id}/proposals:
     get:

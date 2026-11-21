@@ -80,12 +80,9 @@ export async function syncOrderFromGateway(orderId: string): Promise<SyncResult>
     return { found: false, signatureValid: s.signatureValid, outcome: null };
   }
   if (!s.signatureValid) {
-    console.warn(`[Sync] Catatan: Signature Midtrans tidak valid untuk order ${orderId}, tetapi tetap diproses via HTTPS Status API:`, {
-      order_id: s.data.order_id,
-      status_code: s.data.status_code,
-      gross_amount: s.data.gross_amount,
-      transaction_status: s.data.transaction_status,
-    });
+    // Jangan diterapkan. Tidak mencetak signature atau kunci, hanya identitas order.
+    console.warn(`[Sync] Signature Status API tidak cocok untuk order ${orderId}; status tidak diterapkan`);
+    return { found: true, signatureValid: false, outcome: null };
   }
   const outcome = await withTx(async (client) => {
     const { rows } = await client.query<{ id: number; gross_amount: string | number; period_id: number }>(
@@ -98,8 +95,23 @@ export async function syncOrderFromGateway(orderId: string): Promise<SyncResult>
   console.info(`[Sync] Order ${orderId} disinkronkan: ${s.data.transaction_status} -> outcome: ${outcome}`);
   return {
     found: true,
-    signatureValid: s.signatureValid,
+    signatureValid: true,
     gatewayStatus: String(s.data.transaction_status),
     outcome,
   };
+}
+
+/**
+ * Menyinkronkan beberapa order PENDING dari Midtrans untuk endpoint baca (tanpa webhook di lokal).
+ * Dibatasi supaya permintaan baca tidak lambat: paling banyak `max` order, berjalan paralel,
+ * dan tiap order dipotong setelah `timeoutMs`. Kegagalan satu order tidak mengganggu yang lain.
+ */
+export async function syncPendingOrders(
+  orderIds: string[],
+  opts: { max?: number; timeoutMs?: number } = {},
+): Promise<void> {
+  const { max = 5, timeoutMs = 4000 } = opts;
+  const withTimeout = (p: Promise<unknown>) =>
+    Promise.race([p, new Promise((resolve) => setTimeout(resolve, timeoutMs))]);
+  await Promise.allSettled(orderIds.slice(0, max).map((id) => withTimeout(syncOrderFromGateway(id))));
 }
