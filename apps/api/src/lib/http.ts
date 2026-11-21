@@ -4,6 +4,7 @@ export interface HttpResult {
   status: number;
   ok: boolean;
   json: Record<string, any>;
+  text?: string;
 }
 
 export interface RequestOptions {
@@ -57,7 +58,7 @@ function attempt(
             json = {};
           }
           const status = res.statusCode ?? 0;
-          resolve({ result: { status, ok: status >= 200 && status < 300, json } });
+          resolve({ result: { status, ok: status >= 200 && status < 300, json, text } });
         });
         res.on("error", (e) => resolve({ error: e as Error & { code?: string }, connected }));
       },

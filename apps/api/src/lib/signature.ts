@@ -26,16 +26,26 @@ export interface SignedPayload {
 /** Verifikasi signature dengan perbandingan waktu-konstan. */
 export function verifySignature(payload: SignedPayload, serverKey: string): boolean {
   if (typeof payload.signature_key !== "string") return false;
-  const expected = Buffer.from(
-    computeSignature(
-      String(payload.order_id),
-      String(payload.status_code),
-      String(payload.gross_amount),
-      serverKey,
-    ),
-    "utf8",
-  );
+  const key = serverKey.trim();
+  const orderId = String(payload.order_id);
+  const statusCode = String(payload.status_code);
+  const gross = String(payload.gross_amount);
+
+  // Midtrans terkadang menghitung signature memakai string desimal asli ("302500.00"),
+  // tanpa desimal ("302500"), atau fixed 2 desimal. Periksa variasi ini agar tidak ada false reject.
+  const variants = Array.from(new Set([
+    gross,
+    gross.replace(/\.0+$/, ""),
+    !isNaN(Number(gross)) ? Number(gross).toFixed(2) : gross,
+  ]));
+
   const received = Buffer.from(payload.signature_key, "utf8");
-  if (expected.length !== received.length) return false;
-  return timingSafeEqual(expected, received);
+
+  for (const g of variants) {
+    const expected = Buffer.from(computeSignature(orderId, statusCode, g, key), "utf8");
+    if (expected.length === received.length && timingSafeEqual(expected, received)) {
+      return true;
+    }
+  }
+  return false;
 }

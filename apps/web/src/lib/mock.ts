@@ -4,6 +4,7 @@ import type {
   CirclePaymentItem,
   CirclePayoutItem,
   Member,
+  Proposal,
   ReconciliationReport,
 } from "../types";
 
@@ -54,7 +55,7 @@ export const mockCircles: Circle[] = [
     adminFee: 2000,
     status: "active",
     chainCircleId: "2",
-    createdBy: 1,
+    createdBy: 6,
     joinedCount: 12,
     createdAt: "2026-07-01T10:00:00.000Z",
   },
@@ -74,10 +75,11 @@ export const mockCircles: Circle[] = [
   },
 ];
 
-export const mockCircleDetail: CircleDetail = {
+// Detail Kelompok 1: Arisan Kantor DPE (8 anggota, Periode 3 berjalan, Dimas sebagai anggota)
+export const mockCircleDPE: CircleDetail = {
   circle: mockCircles[0],
   myMemberId: 5,
-  isCreator: true,
+  isCreator: false,
   members: [
     {
       memberId: 1,
@@ -145,23 +147,89 @@ export const mockCircleDetail: CircleDetail = {
     },
   ],
   periods: [
-    { id: 1, periodNo: 1, dueDate: "2026-10-01T00:00:00.000Z", status: "done", recipientMemberId: 1 },
-    { id: 2, periodNo: 2, dueDate: "2026-11-01T00:00:00.000Z", status: "done", recipientMemberId: 2 },
-    { id: 3, periodNo: 3, dueDate: "2026-12-01T00:00:00.000Z", status: "running", recipientMemberId: 3 },
-    { id: 4, periodNo: 4, dueDate: "2027-01-01T00:00:00.000Z", status: "scheduled", recipientMemberId: 4 },
-    { id: 5, periodNo: 5, dueDate: "2027-02-01T00:00:00.000Z", status: "scheduled", recipientMemberId: 5 },
-    { id: 6, periodNo: 6, dueDate: "2027-03-01T00:00:00.000Z", status: "scheduled", recipientMemberId: 6 },
-    { id: 7, periodNo: 7, dueDate: "2027-04-01T00:00:00.000Z", status: "scheduled", recipientMemberId: 7 },
-    { id: 8, periodNo: 8, dueDate: "2027-05-01T00:00:00.000Z", status: "scheduled", recipientMemberId: 8 },
+    { id: 1, periodNo: 1, dueDate: "2026-09-05T00:00:00.000Z", status: "done", recipientMemberId: 1 },
+    { id: 2, periodNo: 2, dueDate: "2026-10-05T00:00:00.000Z", status: "done", recipientMemberId: 2 },
+    { id: 3, periodNo: 3, dueDate: "2026-11-05T00:00:00.000Z", status: "running", recipientMemberId: 3 },
+    { id: 4, periodNo: 4, dueDate: "2026-12-05T00:00:00.000Z", status: "scheduled", recipientMemberId: 4 },
+    { id: 5, periodNo: 5, dueDate: "2027-01-05T00:00:00.000Z", status: "scheduled", recipientMemberId: 5 },
+    { id: 6, periodNo: 6, dueDate: "2027-02-05T00:00:00.000Z", status: "scheduled", recipientMemberId: 6 },
+    { id: 7, periodNo: 7, dueDate: "2027-03-05T00:00:00.000Z", status: "scheduled", recipientMemberId: 7 },
+    { id: 8, periodNo: 8, dueDate: "2027-04-05T00:00:00.000Z", status: "scheduled", recipientMemberId: 8 },
   ],
   currentPeriod: {
     id: 3,
     periodNo: 3,
-    dueDate: "2026-12-01T00:00:00.000Z",
+    dueDate: "2026-11-05T00:00:00.000Z",
     status: "running",
     recipientMemberId: 3,
   },
 };
+
+// Detail Kelompok 2: Arisan RT 07 (12 anggota, Periode 5 siap cair, Dimas sebagai Pengelola)
+export const mockCircleRT07: CircleDetail = {
+  circle: mockCircles[1],
+  myMemberId: 6,
+  isCreator: true,
+  members: [
+    { memberId: 1, memberRef: "m_rt7_01", name: "Pak Hadi", turnOrder: 1, isMe: false, currentPayment: { status: "ANCHORED", paid: true, penaltyDue: 0 } },
+    { memberId: 2, memberRef: "m_rt7_02", name: "Bu Sri", turnOrder: 2, isMe: false, currentPayment: { status: "ANCHORED", paid: true, penaltyDue: 0 } },
+    { memberId: 3, memberRef: "m_rt7_03", name: "Pak Joko", turnOrder: 3, isMe: false, currentPayment: { status: "ANCHORED", paid: true, penaltyDue: 0 } },
+    { memberId: 4, memberRef: "m_rt7_04", name: "Pak RT", turnOrder: 4, isMe: false, currentPayment: { status: "ANCHORED", paid: true, penaltyDue: 0 } },
+    { memberId: 5, memberRef: "m_rt7_05", name: "Bu Wati", turnOrder: 5, isMe: false, currentPayment: { status: "ANCHORED", paid: true, penaltyDue: 0 } },
+    { memberId: 6, memberRef: "m_37058eb1", name: "Dimas Prakoso", turnOrder: 6, isMe: true, currentPayment: { status: "ANCHORED", paid: true, penaltyDue: 0 } },
+    { memberId: 7, memberRef: "m_rt7_07", name: "Bu Rita", turnOrder: 7, isMe: false, currentPayment: { status: "ANCHORED", paid: true, penaltyDue: 0 } },
+    { memberId: 8, memberRef: "m_rt7_08", name: "Pak Bambang", turnOrder: 8, isMe: false, currentPayment: { status: "ANCHORED", paid: true, penaltyDue: 0 } },
+    { memberId: 9, memberRef: "m_rt7_09", name: "Bu Endang", turnOrder: 9, isMe: false, currentPayment: { status: "ANCHORED", paid: true, penaltyDue: 0 } },
+    { memberId: 10, memberRef: "m_rt7_10", name: "Pak Slamet", turnOrder: 10, isMe: false, currentPayment: { status: "ANCHORED", paid: true, penaltyDue: 0 } },
+    { memberId: 11, memberRef: "m_rt7_11", name: "Bu Siti", turnOrder: 11, isMe: false, currentPayment: { status: "ANCHORED", paid: true, penaltyDue: 0 } },
+    { memberId: 12, memberRef: "m_rt7_12", name: "Pak Agus", turnOrder: 12, isMe: false, currentPayment: { status: "ANCHORED", paid: true, penaltyDue: 0 } },
+  ],
+  periods: [
+    { id: 21, periodNo: 1, dueDate: "2026-07-10T00:00:00.000Z", status: "done", recipientMemberId: 1 },
+    { id: 22, periodNo: 2, dueDate: "2026-08-10T00:00:00.000Z", status: "done", recipientMemberId: 2 },
+    { id: 23, periodNo: 3, dueDate: "2026-09-10T00:00:00.000Z", status: "done", recipientMemberId: 3 },
+    { id: 24, periodNo: 4, dueDate: "2026-10-10T00:00:00.000Z", status: "done", recipientMemberId: 4 },
+    { id: 25, periodNo: 5, dueDate: "2026-11-10T00:00:00.000Z", status: "ready_payout", recipientMemberId: 5 },
+    { id: 26, periodNo: 6, dueDate: "2026-12-10T00:00:00.000Z", status: "scheduled", recipientMemberId: 6 },
+    { id: 27, periodNo: 7, dueDate: "2027-01-10T00:00:00.000Z", status: "scheduled", recipientMemberId: 7 },
+    { id: 28, periodNo: 8, dueDate: "2027-02-10T00:00:00.000Z", status: "scheduled", recipientMemberId: 8 },
+    { id: 29, periodNo: 9, dueDate: "2027-03-10T00:00:00.000Z", status: "scheduled", recipientMemberId: 9 },
+    { id: 30, periodNo: 10, dueDate: "2027-04-10T00:00:00.000Z", status: "scheduled", recipientMemberId: 10 },
+    { id: 31, periodNo: 11, dueDate: "2027-05-10T00:00:00.000Z", status: "scheduled", recipientMemberId: 11 },
+    { id: 32, periodNo: 12, dueDate: "2027-06-10T00:00:00.000Z", status: "scheduled", recipientMemberId: 12 },
+  ],
+  currentPeriod: {
+    id: 25,
+    periodNo: 5,
+    dueDate: "2026-11-10T00:00:00.000Z",
+    status: "ready_payout",
+    recipientMemberId: 5,
+  },
+};
+
+// Detail Kelompok 3: Tabungan Alumni 2019 (6 anggota, status draft, 4 anggota bergabung)
+export const mockCircleAlumni: CircleDetail = {
+  circle: mockCircles[2],
+  myMemberId: 3,
+  isCreator: false,
+  members: [
+    { memberId: 1, memberRef: "m_alm_01", name: "Budi Santoso", turnOrder: null, isMe: false, currentPayment: null },
+    { memberId: 2, memberRef: "m_alm_02", name: "Maya Indah", turnOrder: null, isMe: false, currentPayment: null },
+    { memberId: 3, memberRef: "m_37058eb1", name: "Dimas Prakoso", turnOrder: null, isMe: true, currentPayment: null },
+    { memberId: 4, memberRef: "m_alm_04", name: "Reza Rahardian", turnOrder: null, isMe: false, currentPayment: null },
+  ],
+  periods: [],
+  currentPeriod: null,
+};
+
+export const mockCircleDetail: CircleDetail = mockCircleDPE;
+
+export function getMockCircleDetail(id: number | string): CircleDetail {
+  const num = Number(id);
+  if (num === 2 || String(id).toLowerCase().includes("rt")) return mockCircleRT07;
+  if (num === 3 || String(id).toLowerCase().includes("alumni")) return mockCircleAlumni;
+  return mockCircleDPE;
+}
 
 export const mockPayments: CirclePaymentItem[] = [
   {
@@ -248,10 +316,90 @@ export const mockPayouts: CirclePayoutItem[] = [
     mode: "SIMULATED",
     status: "SIMULATED",
     recipientMemberRef: "m_b04c21",
-    payoutRefHash: "0x74dfa01e4be84396c586730155872389d09e3d826b75a9b25337e62ab9294c0d",
-    createdAt: "2026-11-02T16:30:00.000Z",
+    payoutRefHash: "0xbc892d18471da928f01bba29048f0293da21bcf9128038f82810398afbb19e34",
+    createdAt: "2026-11-02T16:00:00.000Z",
   },
 ];
+
+export const mockProposals: Record<number, Proposal[]> = {
+  1: [
+    {
+      id: 1,
+      circleId: 1,
+      periodId: 3,
+      periodNo: 3,
+      kind: "close_period",
+      status: "open",
+      deadline: "2026-11-25T12:00:00.000Z",
+      approvals: 3,
+      rejections: 1,
+      quorum: 5,
+      myVote: null,
+      chainProposalId: null,
+    },
+  ],
+  2: [],
+  3: [],
+};
+
+export const mockPaymentsByCircle: Record<number, { payments: CirclePaymentItem[]; payouts: CirclePayoutItem[] }> = {
+  1: {
+    payments: mockPayments,
+    payouts: [mockPayouts[0], mockPayouts[1]],
+  },
+  2: {
+    payments: [
+      {
+        orderId: "LP-RT7-P5-M001",
+        periodNo: 5,
+        memberRef: "m_rt7_01",
+        memberName: "Pak Hadi",
+        status: "ANCHORED",
+        amount: 100000,
+        penaltyAmount: 0,
+        adminFee: 2000,
+        grossAmount: 102000,
+        paymentType: "Virtual Account BNI",
+        paidAt: "2026-11-03T08:30:00.000Z",
+        createdAt: "2026-11-03T08:00:00.000Z",
+        chainStatus: "confirmed",
+        txHash: "0x6a3de8f2",
+      },
+      {
+        orderId: "LP-RT7-P5-M006",
+        periodNo: 5,
+        memberRef: "m_37058eb1",
+        memberName: "Dimas Prakoso",
+        status: "ANCHORED",
+        amount: 100000,
+        penaltyAmount: 0,
+        adminFee: 2000,
+        grossAmount: 102000,
+        paymentType: "Virtual Account BCA",
+        paidAt: "2026-11-04T10:15:00.000Z",
+        createdAt: "2026-11-04T10:00:00.000Z",
+        chainStatus: "confirmed",
+        txHash: "0x9c2e41b7",
+      },
+    ],
+    payouts: [
+      {
+        id: 201,
+        periodNo: 4,
+        amount: 1200000,
+        mode: "SIMULATED",
+        status: "COMPLETED",
+        recipientMemberRef: "m_rt7_01",
+        payoutRefHash: "0x5e07a3c10928f01bba29048f0293da21bcf9128038f82810398afbb19e348911",
+        createdAt: "2026-10-06T15:30:00.000Z",
+      },
+    ],
+  },
+  3: {
+    payments: [],
+    payouts: [],
+  },
+};
 
 export const mockReconciliation: ReconciliationReport = {
   circleId: 1,

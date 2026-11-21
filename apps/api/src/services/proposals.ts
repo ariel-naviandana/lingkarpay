@@ -51,6 +51,9 @@ export async function createClosePeriodProposal(user: AuthUser, periodId: number
       `SELECT count(DISTINCT member_id)::int AS n FROM orders WHERE period_id = $1 AND status IN ${PAID}`,
       [periodId],
     );
+    if (paid.rows[0]!.n === 0) {
+      throw conflict("NO_FUNDS", "Belum ada iuran yang masuk pada periode ini");
+    }
     if (paid.rows[0]!.n >= ctx.member_count) {
       throw conflict("PERIOD_COMPLETE", "Semua iuran sudah lunas; usulan tidak diperlukan");
     }

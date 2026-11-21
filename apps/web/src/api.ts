@@ -35,23 +35,41 @@ export function setToken(t: string | null) {
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    // Network error (server unreachable, CORS pre-flight failed, etc.)
+    throw new ApiError("NETWORK_ERROR", "Tidak dapat terhubung ke server. Pastikan backend berjalan di port 3001.", 0);
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    // Gunakan pesan error dari backend jika ada (misal dari Midtrans, validasi, dll.)
+    // Hanya fallback ke pesan server down jika tidak ada pesan dari server (misal 502 dari proxy Vite)
+    const serverMsg =
+      data?.error?.message ??
+      (res.status === 502 || res.status === 503 || res.status === 504
+        ? "Server tidak dapat dihubungi saat ini. Pastikan backend API sudah berjalan di port 3001."
+        : res.statusText || "Terjadi kesalahan pada server");
     throw new ApiError(
       data?.error?.code ?? "ERROR",
-      data?.error?.message ?? res.statusText,
+      serverMsg,
       res.status,
     );
   }
   return data as T;
+}
+
+/** Returns true for gateway / server-down errors (5xx or network) */
+export function isServerError(e: unknown): boolean {
+  return e instanceof ApiError && (e.status === 0 || e.status >= 500);
 }
 
 export const api = {
@@ -65,6 +83,7 @@ export const api = {
   // Circles
   circles: () => request<{ circles: Circle[] }>("GET", "/circles"),
   circle: (id: number) => request<CircleDetail>("GET", `/circles/${id}`),
+  publicCircle: (id: number) => request<CircleDetail>("GET", `/public/circles/${id}`),
   createCircle: (body: {
     name: string;
     contributionAmount: number;
@@ -93,6 +112,8 @@ export const api = {
   createCloseProposal: (periodId: number) =>
     request<Proposal>("POST", `/periods/${periodId}/close-proposals`),
   voteProposal: (proposalId: number, approve: boolean) =>
+    request<Proposal>("POST", `/proposals/${proposalId}/votes`, { approve }),
+  vote: (proposalId: number, approve: boolean) =>
     request<Proposal>("POST", `/proposals/${proposalId}/votes`, { approve }),
 
   // Checkout & Orders

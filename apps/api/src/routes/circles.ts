@@ -7,6 +7,7 @@ import {
   circlePayments,
   createCircle,
   getCircleDetail,
+  getPublicCircle,
   listCircles,
   listPeriods,
   startCircle,
@@ -41,6 +42,12 @@ export async function circleRoutes(app: FastifyInstance) {
     const user = await requireUser(req);
     const { id } = idParams.parse(req.params);
     return getCircleDetail(user.id, id);
+  });
+
+  // Endpoint publik tanpa login untuk portal verifikasi
+  app.get("/public/circles/:id", async (req) => {
+    const { id } = idParams.parse(req.params);
+    return getPublicCircle(id);
   });
 
   app.post("/circles/:id/members", async (req, reply) => {

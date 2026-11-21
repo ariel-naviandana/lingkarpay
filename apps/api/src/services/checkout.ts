@@ -134,10 +134,22 @@ export async function createCheckout(
     throw forbidden("Iuran hanya bisa dibayar oleh anggota yang bersangkutan");
   }
   if (ctx.circle_status !== "active") {
-    throw conflict("CIRCLE_NOT_ACTIVE", "Kelompok belum dimulai atau sudah selesai");
+    throw conflict(
+      "CIRCLE_NOT_ACTIVE",
+      ctx.circle_status === "draft"
+        ? "Kelompok ini belum dimulai oleh pengelola"
+        : "Kelompok sudah selesai",
+    );
   }
   if (ctx.period_status !== "running") {
-    throw conflict("PERIOD_NOT_OPEN", "Periode ini tidak sedang menerima iuran");
+    throw conflict(
+      "PERIOD_NOT_OPEN",
+      ctx.period_status === "ready_payout"
+        ? "Periode ini sudah ditutup untuk pencairan dan tidak lagi menerima iuran baru"
+        : ctx.period_status === "done"
+        ? "Periode ini sudah selesai"
+        : "Periode ini tidak sedang menerima iuran",
+    );
   }
 
   const existing = await resolveExisting(ctx.member_id, ctx.period_id);

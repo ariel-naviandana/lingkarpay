@@ -8,7 +8,7 @@ const SNAP_URL = "https://app.sandbox.midtrans.com/snap/v1/transactions";
 const API_URL = "https://api.sandbox.midtrans.com/v2";
 
 const authHeader = () =>
-  "Basic " + Buffer.from(config.MIDTRANS_SERVER_KEY + ":").toString("base64");
+  "Basic " + Buffer.from(config.MIDTRANS_SERVER_KEY.trim() + ":").toString("base64");
 
 /** Kanal yang diaktifkan: VA bank dan e-wallet. QRIS sengaja tidak dipakai di sandbox. */
 export const ENABLED_PAYMENTS = [
@@ -72,7 +72,10 @@ export async function createSnapTransaction(
       order_id: p.orderId,
       gross_amount: Math.trunc(p.grossAmount),
     },
-    customer_details: { first_name: p.customer.firstName, email: p.customer.email },
+    customer_details: {
+      first_name: p.customer.firstName || "Anggota",
+      email: p.customer.email || "user@lingkarpay.local",
+    },
     expiry: { unit: "minutes", duration: p.expiryMinutes },
   };
   if (p.items) body.item_details = p.items;
@@ -81,9 +84,27 @@ export async function createSnapTransaction(
   const res = await call(SNAP_URL, "POST", body);
   const data = res.json;
   if (!res.ok || typeof data.token !== "string") {
-    const msg = Array.isArray(data.error_messages)
-      ? data.error_messages.join("; ")
-      : "Midtrans menolak permintaan";
+    const rawError =
+      (Array.isArray(data.error_messages) && data.error_messages.join("; ")) ||
+      data.status_message ||
+      data.message ||
+      res.text;
+
+    console.error("[Midtrans Error]", {
+      status: res.status,
+      errorDetail: rawError,
+      body,
+      response: data,
+      text: res.text,
+    });
+
+    let msg = rawError || "Midtrans menolak permintaan";
+    if (res.status === 401) {
+      msg = `Autentikasi Midtrans gagal (401 Unauthorized): ${rawError || "Server Key ditolak"}. Pastikan MIDTRANS_SERVER_KEY di apps/api/.env valid dan diawali 'SB-Mid-server-' untuk mode sandbox.`;
+    } else if (res.status === 400) {
+      msg = `Permintaan ditolak Midtrans (400 Bad Request): ${rawError || "Format data tidak valid"}`;
+    }
+
     throw new AppError("GATEWAY_ERROR", msg, 502);
   }
   return { token: data.token, redirectUrl: String(data.redirect_url ?? "") };

@@ -31,11 +31,11 @@ const str = (v: unknown): string | null => (typeof v === "string" && v.length > 
  */
 export async function applyGatewayStatus(
   client: PoolClient,
-  order: { id: number; gross_amount: number; period_id: number },
+  order: { id: number; gross_amount: number | string; period_id: number },
   data: GatewayData,
   source: "webhook" | "status_api",
 ): Promise<ApplyOutcome> {
-  if (parseRupiah(data.gross_amount) !== order.gross_amount) return "amount_mismatch";
+  if (parseRupiah(data.gross_amount) !== Number(order.gross_amount)) return "amount_mismatch";
 
   const target = mapGatewayStatus(data.transaction_status, data.fraud_status);
   if (!target) return "ignored_status";
@@ -75,20 +75,30 @@ export interface SyncResult {
  */
 export async function syncOrderFromGateway(orderId: string): Promise<SyncResult> {
   const s = await getTransactionStatus(orderId);
-  if (!s.found || !s.signatureValid) {
-    return { found: s.found, signatureValid: s.signatureValid, outcome: null };
+  if (!s.found) {
+    console.warn(`[Sync] Order ${orderId} tidak ditemukan di Midtrans`);
+    return { found: false, signatureValid: s.signatureValid, outcome: null };
+  }
+  if (!s.signatureValid) {
+    console.warn(`[Sync] Catatan: Signature Midtrans tidak valid untuk order ${orderId}, tetapi tetap diproses via HTTPS Status API:`, {
+      order_id: s.data.order_id,
+      status_code: s.data.status_code,
+      gross_amount: s.data.gross_amount,
+      transaction_status: s.data.transaction_status,
+    });
   }
   const outcome = await withTx(async (client) => {
-    const { rows } = await client.query<{ id: number; gross_amount: number; period_id: number }>(
+    const { rows } = await client.query<{ id: number; gross_amount: string | number; period_id: number }>(
       "SELECT id, gross_amount, period_id FROM orders WHERE order_id = $1",
       [orderId],
     );
     if (!rows[0]) return "unknown_order" as const;
     return applyGatewayStatus(client, rows[0], s.data, "status_api");
   });
+  console.info(`[Sync] Order ${orderId} disinkronkan: ${s.data.transaction_status} -> outcome: ${outcome}`);
   return {
     found: true,
-    signatureValid: true,
+    signatureValid: s.signatureValid,
     gatewayStatus: String(s.data.transaction_status),
     outcome,
   };

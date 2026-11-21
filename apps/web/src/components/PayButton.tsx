@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
-import { api } from "../api";
+import { api, ApiError } from "../api";
 import { PAID_STATUSES, type OrderStatus } from "../types";
+import { Button } from "./ui";
 
-// Tipe minimal untuk snap.js (dimuat dinamis dari URL di /public-config).
 declare global {
   interface Window {
     snap?: { pay: (token: string, options?: Record<string, unknown>) => void };
@@ -30,10 +30,6 @@ interface Props {
   onPaid?: () => void;
 }
 
-/**
- * Alur bayar: POST /checkout -> snap.pay(token) -> polling GET /orders/:orderId.
- * Status bayar hanya dari backend (sumber kebenaran: webhook), bukan dari callback Snap.
- */
 export default function PayButton({ circleId, periodId, memberId, onPaid }: Props) {
   const [state, setState] = useState<"idle" | "loading" | "waiting" | "paid" | "failed" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -42,7 +38,7 @@ export default function PayButton({ circleId, periodId, memberId, onPaid }: Prop
   async function poll(orderId: string) {
     const deadline = Date.now() + 10 * 60_000;
     while (!cancelled.current && Date.now() < deadline) {
-      const o = await api.order(orderId);
+      const o = await api.order(orderId, true);
       const status: OrderStatus = o.status;
       if (PAID_STATUSES.includes(status)) {
         setState("paid");
@@ -63,26 +59,76 @@ export default function PayButton({ circleId, periodId, memberId, onPaid }: Prop
     setState("loading");
     setMessage("");
     try {
-      const cfg = await api.publicConfig();
-      await loadSnap(cfg.snapJsUrl, cfg.midtransClientKey);
+      const cfg = await api.publicConfig().catch(() => null);
+      if (cfg?.snapJsUrl && cfg?.midtransClientKey) {
+        await loadSnap(cfg.snapJsUrl, cfg.midtransClientKey);
+      }
       const co = await api.checkout({ circleId, periodId, memberId });
-      if (!co.token) throw new Error("Token pembayaran belum tersedia, coba lagi");
-      setMessage(`Tagihan Rp${co.grossAmount.toLocaleString("id-ID")} (iuran + penalti + biaya layanan)`);
-      window.snap?.pay(co.token); // TODO(frontend): tangani callback onClose/onError bila perlu
+      if (!co.token) {
+        throw new Error("Token pembayaran belum tersedia, coba lagi");
+      }
+      setMessage(`Tagihan Rp${co.grossAmount.toLocaleString("id-ID")}`);
+      if (window.snap) {
+        window.snap.pay(co.token, {
+          onSuccess: () => {
+            setState("waiting");
+            void poll(co.orderId);
+          },
+          onPending: () => {
+            setState("waiting");
+            void poll(co.orderId);
+          },
+          onError: () => {
+            setState("failed");
+            setMessage("Pembayaran gagal di gateway.");
+          },
+          onClose: () => {
+            void poll(co.orderId);
+          },
+        });
+      }
       setState("waiting");
       await poll(co.orderId);
-    } catch (err) {
+    } catch (err: unknown) {
       setState("error");
-      setMessage(err instanceof Error ? err.message : "Gagal");
+      const isNetworkDown =
+        err instanceof ApiError &&
+        (err.status === 0 ||
+          ((err.status === 502 || err.status === 503 || err.status === 504) &&
+            (!err.message ||
+              err.message === "Bad Gateway" ||
+              err.message.includes("Server tidak dapat dihubungi"))));
+
+      setMessage(
+        isNetworkDown
+          ? "Server tidak dapat dihubungi. Pastikan backend API sudah berjalan di port 3001."
+          : err instanceof Error
+          ? err.message
+          : "Gagal memproses pembayaran",
+      );
     }
   }
 
   return (
-    <div>
-      <button onClick={pay} disabled={state === "loading" || state === "waiting" || state === "paid"}>
-        {state === "waiting" ? "Menunggu pembayaran..." : "Bayar iuran"}
-      </button>
-      {message && <p className={state === "paid" ? "ok" : state === "error" || state === "failed" ? "error" : "muted"}>{message}</p>}
+    <div className="flex flex-col items-end gap-1.5">
+      <Button
+        onClick={() => void pay()}
+        disabled={state === "loading" || state === "waiting" || state === "paid"}
+        className="w-full sm:w-auto"
+      >
+        {state === "loading"
+          ? "Menyiapkan..."
+          : state === "waiting"
+          ? "Menunggu pembayaran..."
+          : state === "paid"
+          ? "Lunas"
+          : "Bayar iuran sekarang"}
+      </Button>
+      {message && (
+        <p className={`text-xs ${state === "paid" ? "text-brand font-semibold" : state === "error" || state === "failed" ? "text-red-700" : "text-stone-500"}`}>
+          {message}
+        </p>
+      )}
     </div>
   );
 }

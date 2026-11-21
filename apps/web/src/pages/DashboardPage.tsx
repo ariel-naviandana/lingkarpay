@@ -4,7 +4,6 @@ import { Badge, Button, Card } from "../components/ui";
 import { useAuth } from "../context/useAuth";
 import { api } from "../api";
 import { formatDateTime, rupiah } from "../lib/format";
-import { mockCircleDetail, mockCircles } from "../lib/mock";
 import type { Circle, CircleDetail, CirclePaymentItem, CirclePayoutItem } from "../types";
 
 interface UnpaidAlert {
@@ -37,13 +36,8 @@ export default function DashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.circles().catch(() => null);
-      let circleList = res?.circles || [];
-
-      // If backend is offline or has no circles yet, provide fallback so dashboard is interactive
-      if (circleList.length === 0) {
-        circleList = mockCircles;
-      }
+      const res = await api.circles();
+      const circleList = res.circles || [];
       setCircles(circleList);
 
       // Fetch details and payments for each circle
@@ -53,10 +47,7 @@ export default function DashboardPage() {
       await Promise.all(
         circleList.map(async (c) => {
           try {
-            let detail = await api.circle(c.id).catch(() => null);
-            if (!detail && c.id === 1) {
-              detail = mockCircleDetail;
-            }
+            const detail = await api.circle(c.id).catch(() => null);
             if (detail) {
               detailsMap[c.id] = detail;
             }
@@ -110,38 +101,17 @@ export default function DashboardPage() {
         })
       );
 
-      // Fallback mock activities if none loaded
-      if (allActivities.length === 0) {
-        allActivities.push(
-          {
-            id: "act-1",
-            tone: "purple",
-            badge: "Tercatat on-chain",
-            message: "Iuran Fajar periode 3 tercatat di smart contract",
-            time: "Hari ini, 09:14",
-          },
-          {
-            id: "act-2",
-            tone: "amber",
-            badge: "Menunggu rantai",
-            message: "Pembayaran Putri sah, pencatatan on-chain dicoba ulang",
-            time: "Hari ini, 08:52",
-          },
-          {
-            id: "act-3",
-            tone: "green",
-            badge: "Pencairan",
-            message: "Pencairan periode 2 Arisan Kantor DPE dicatat di Sepolia",
-            time: "6 Nov, 15:30",
-          }
-        );
-      }
-
       setCircleDetails(detailsMap);
       setActivities(allActivities);
-    } catch {
-      setCircles(mockCircles);
-      setCircleDetails({ 1: mockCircleDetail });
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Gagal memuat data dari server. Pastikan backend API berjalan."
+      );
+      setCircles([]);
+      setCircleDetails({});
+      setActivities([]);
     } finally {
       setLoading(false);
     }
@@ -226,9 +196,6 @@ export default function DashboardPage() {
           >
             {loading ? "Menyegarkan..." : "↻ Segarkan"}
           </Button>
-          <Link to="/groups/new">
-            <Button className="w-full sm:w-auto">+ Buat kelompok</Button>
-          </Link>
         </div>
       </header>
 
@@ -275,12 +242,12 @@ export default function DashboardPage() {
         </Card>
 
         <Card className="p-4 sm:p-5">
-          <p className="text-sm text-stone-500">Kelompok berjalan</p>
+          <p className="text-sm text-stone-500">Kelompok terdaftar</p>
           <p className="my-1 text-2xl sm:text-3xl font-extrabold tracking-tight">
-            {activeCircles.length}
+            {circles.length}
           </p>
           <p className="text-xs sm:text-sm text-stone-500">
-            {activeCircles.length} aktif, {draftCircles.length} menunggu anggota
+            {activeCircles.length} aktif, {draftCircles.length} belum dimulai
           </p>
         </Card>
 
@@ -312,7 +279,7 @@ export default function DashboardPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {circles.map((c) => {
             const detail = circleDetails[c.id];
-            const isCreator = c.createdBy === user?.id;
+            const isCreator = detail?.isCreator ?? (Number(c.createdBy) === Number(user?.id));
             const currentPeriodNo = detail?.currentPeriod?.periodNo ?? 1;
 
             let badgeTone: "green" | "amber" | "gray" | "purple" = "gray";

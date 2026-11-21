@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Card, Mono, Td, Th, Select } from "../../components/ui";
 import { api } from "../../api";
 import { formatDateTime, rupiah, shortenHash } from "../../lib/format";
-import { mockReconciliation } from "../../lib/mock";
 import type { Circle, ReconciliationReport } from "../../types";
 
 export default function OperatorPage() {
@@ -43,9 +42,13 @@ export default function OperatorPage() {
         );
         setTimeout(() => setReconNotice(null), 5000);
       }
-    } catch {
-      // Fallback for demo / offline resilience
-      setReport(mockReconciliation);
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Gagal memuat laporan rekonsiliasi dari backend. Pastikan server API berjalan."
+      );
+      setReport(null);
     } finally {
       setLoading(false);
       setIsReconciling(false);

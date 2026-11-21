@@ -66,8 +66,6 @@ export default function AppHeader() {
       {/* Right: badges + actions + user */}
       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
         {/* Environment badges */}
-        <Badge tone="amber">Sandbox · tanpa uang nyata</Badge>
-        <Badge tone="green">Sepolia</Badge>
 
         {/* Notification bell */}
         <button
@@ -83,8 +81,8 @@ export default function AppHeader() {
         </button>
 
         {/* CTA button – context-aware */}
-        {location.pathname.startsWith("/groups/") && location.pathname !== "/groups/new" && (
-          <Link to="/groups/1/pay">
+        {location.pathname.startsWith("/groups/") && location.pathname !== "/groups/new" && !location.pathname.endsWith("/pay") && (
+          <Link to={`${location.pathname}/pay`}>
             <Button className="!px-3.5 !py-2 text-xs sm:text-sm">Bayar iuran</Button>
           </Link>
         )}

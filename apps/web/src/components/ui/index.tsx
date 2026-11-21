@@ -71,3 +71,42 @@ export const Td = ({ children, className = "" }: { children?: ReactNode; classNa
 export const Mono = ({ children }: { children: ReactNode }) => (
   <span className="font-mono text-xs break-all sm:break-normal">{children}</span>
 );
+
+export const ProgressBar = ({
+  value,
+  max,
+  tone = "bg-brand",
+  className = "",
+}: {
+  value: number;
+  max: number;
+  tone?: string;
+  className?: string;
+}) => {
+  const pct = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
+  return (
+    <div className={`h-2 w-full rounded-full bg-sand overflow-hidden ${className}`}>
+      <div className={`h-full rounded-full transition-all duration-300 ${tone}`} style={{ width: `${pct}%` }} />
+    </div>
+  );
+};
+
+export const Loading = ({ text = "Memuat data..." }: { text?: string }) => (
+  <div className="flex flex-col items-center justify-center p-12 text-stone-500 space-y-3">
+    <div className="h-7 w-7 animate-spin rounded-full border-3 border-brand border-t-transparent" />
+    <p className="text-xs sm:text-sm">{text}</p>
+  </div>
+);
+
+export const ErrorBox = ({ message, onRetry }: { message?: string; onRetry?: () => void }) => (
+  <Card className="border-red-200 bg-red-50 text-center space-y-3 p-6 sm:p-8">
+    <p className="text-sm font-semibold text-red-800">{message || "Terjadi kesalahan saat memuat data."}</p>
+    {onRetry && (
+      <Button variant="outline" onClick={onRetry} className="text-xs">
+        Coba lagi
+      </Button>
+    )}
+  </Card>
+);
+
+export { CalendarDropdown } from "./CalendarDropdown";

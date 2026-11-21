@@ -6,7 +6,6 @@ import AppHeader from "../components/layout/AppHeader";
 
 const baseNav = [
   ["/dashboard", "Dashboard"],
-  ["/groups/1", "Kelompok saya"],
   ["/groups/new", "Buat kelompok"],
   ["/history", "Riwayat"],
   ["/verifikasi/1", "Verifikasi publik"],

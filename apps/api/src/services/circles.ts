@@ -3,6 +3,7 @@ import { AppError, conflict, forbidden, notFound } from "../lib/errors.js";
 import { randomHex } from "../lib/hash.js";
 import { computePenalty } from "./billing.js";
 import { enqueueCreateCircle } from "./outbox.js";
+import { syncOrderFromGateway } from "./gatewayStatus.js";
 
 interface CircleRow {
   id: number;
@@ -129,6 +130,17 @@ export async function getCircleDetail(userId: number, circleId: number) {
   const current =
     periodRows.find((p) => p.status === "running" || p.status === "ready_payout") ?? null;
 
+  if (current) {
+    // Sinkronkan order PENDING di periode aktif langsung dari Midtrans Status API
+    const pendingOrders = await pool.query<{ order_id: string }>(
+      `SELECT order_id FROM orders WHERE period_id = $1 AND status = 'PENDING'`,
+      [current.id],
+    );
+    for (const po of pendingOrders.rows) {
+      await syncOrderFromGateway(po.order_id).catch(() => undefined);
+    }
+  }
+
   const memberRows = (
     await pool.query<{
       id: number;
@@ -177,6 +189,67 @@ export async function getCircleDetail(userId: number, circleId: number) {
     circle: toCircle(circle),
     myMemberId,
     isCreator: circle.created_by === userId,
+    members,
+    periods: periodRows.map(toPeriod),
+    currentPeriod: current ? toPeriod(current) : null,
+  };
+}
+
+/** Tampilan publik untuk portal verifikasi (tanpa data pribadi user). Terbuka tanpa login. */
+export async function getPublicCircle(circleId: number) {
+  const circle = await getCircleRow(pool, circleId);
+  const periodRows = (
+    await pool.query<PeriodRow>(
+      `SELECT id, period_no, due_date, status, recipient_member_id
+         FROM periods WHERE circle_id = $1 ORDER BY period_no`,
+      [circleId],
+    )
+  ).rows;
+  const current =
+    periodRows.find((p) => p.status === "running" || p.status === "ready_payout") ?? null;
+
+  const memberRows = (
+    await pool.query<{
+      id: number;
+      member_ref: string;
+      turn_order: number | null;
+      payment_status: string | null;
+    }>(
+      `SELECT m.id, m.member_ref, m.turn_order,
+              (SELECT o.status FROM orders o
+                WHERE o.member_id = m.id AND o.period_id = $2
+                  AND o.status IN ('PENDING', 'SETTLED', 'SETTLED_PENDING_CHAIN', 'ANCHORED')
+                LIMIT 1) AS payment_status
+         FROM members m
+        WHERE m.circle_id = $1
+        ORDER BY m.turn_order NULLS LAST, m.id`,
+      [circleId, current?.id ?? 0],
+    )
+  ).rows;
+
+  const members = memberRows.map((m) => {
+    const paid =
+      m.payment_status === "SETTLED" ||
+      m.payment_status === "SETTLED_PENDING_CHAIN" ||
+      m.payment_status === "ANCHORED";
+    return {
+      memberId: m.id,
+      memberRef: m.member_ref,
+      name: m.member_ref,
+      turnOrder: m.turn_order,
+      isMe: false,
+      currentPayment: current
+        ? {
+            status: m.payment_status,
+            paid,
+            penaltyDue: 0,
+          }
+        : null,
+    };
+  });
+
+  return {
+    circle: toCircle(circle),
     members,
     periods: periodRows.map(toPeriod),
     currentPeriod: current ? toPeriod(current) : null,
@@ -303,6 +376,18 @@ export async function listPeriods(userId: number, circleId: number) {
 /** Riwayat pembayaran dan pencairan satu kelompok (terbuka untuk semua anggota). */
 export async function circlePayments(userId: number, circleId: number) {
   await requireMember(pool, circleId, userId);
+
+  // Sinkronkan order PENDING di kelompok ini dari gateway
+  const pendingOrders = await pool.query<{ order_id: string }>(
+    `SELECT o.order_id FROM orders o
+       JOIN periods p ON p.id = o.period_id
+      WHERE p.circle_id = $1 AND o.status = 'PENDING'`,
+    [circleId],
+  );
+  for (const po of pendingOrders.rows) {
+    await syncOrderFromGateway(po.order_id).catch(() => undefined);
+  }
+
   const orders = (
     await pool.query<{
       order_id: string;
