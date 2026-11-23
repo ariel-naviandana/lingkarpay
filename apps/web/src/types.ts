@@ -133,6 +133,8 @@ export interface CirclePayoutItem {
   recipientMemberRef: string;
   payoutRefHash: string;
   createdAt: string;
+  chainStatus?: string | null; // status job markPayout (confirmed = sudah di chain)
+  txHash?: string | null;
 }
 
 export interface CirclePaymentsResult {

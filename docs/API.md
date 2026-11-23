@@ -23,7 +23,7 @@ Kode error umum: `VALIDATION_ERROR` 400, `UNAUTHORIZED` 401, `FORBIDDEN` 403, `N
 | `POST /circles/:id/members` | Body `{ email }` (pengguna harus sudah terdaftar). Hanya pembuat, hanya saat `draft`. 409 `CIRCLE_FULL`, `ALREADY_MEMBER`, `CIRCLE_STARTED`. |
 | `POST /circles/:id/start` | Body `{ order?: [memberId,...] }` (urutan giliran; bawaan urutan bergabung). Mengunci urutan dan parameter, membuat semua periode (periode 1 `running`). 409 `CIRCLE_NOT_FULL`. 400 `INVALID_ORDER`. |
 | `GET /circles/:id/periods` | → `{ periods: [{ id, periodNo, dueDate, status, recipientMemberId }] }` |
-| `GET /circles/:id/payments` | → `{ payments: [...], payouts: [...] }`. Tiap pembayaran memuat `status`, rincian jumlah, `chainStatus`, `txHash`. Terbuka bagi semua anggota. |
+| `GET /circles/:id/payments` | → `{ payments: [...], payouts: [...] }`. Tiap pembayaran memuat `status`, rincian jumlah, `chainStatus`, `txHash`. Terbuka bagi semua anggota. Tiap `payouts[]` juga memuat `chainStatus` (status job `markPayout`; `confirmed` = sudah tercatat di chain) dan `txHash`. |
 
 ## Checkout dan order
 | | |

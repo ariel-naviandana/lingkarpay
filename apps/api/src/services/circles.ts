@@ -428,12 +428,19 @@ export async function circlePayments(userId: number, circleId: number) {
       member_ref: string;
       payout_ref_hash: string;
       created_at: Date;
+      chain_status: string | null;
+      tx_hash: string | null;
     }>(
       `SELECT po.id, p.period_no, po.amount, po.mode, po.status, m.member_ref,
-              po.payout_ref_hash, po.created_at
+              po.payout_ref_hash, po.created_at,
+              j.status AS chain_status,
+              (SELECT t.tx_hash FROM chain_transactions t
+                WHERE t.job_id = j.id AND t.status = 'confirmed'
+                ORDER BY t.id DESC LIMIT 1) AS tx_hash
          FROM payouts po
          JOIN periods p ON p.id = po.period_id
          JOIN members m ON m.id = po.recipient_member_id
+         LEFT JOIN chain_jobs j ON j.payout_id = po.id AND j.kind = 'markPayout'
         WHERE p.circle_id = $1
         ORDER BY p.period_no`,
       [circleId],
@@ -466,6 +473,8 @@ export async function circlePayments(userId: number, circleId: number) {
       recipientMemberRef: p.member_ref,
       payoutRefHash: p.payout_ref_hash,
       createdAt: p.created_at,
+      chainStatus: p.chain_status,
+      txHash: p.tx_hash,
     })),
   };
 }

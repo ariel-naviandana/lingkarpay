@@ -109,7 +109,7 @@ export default function HistoryPage() {
   if (!data) return <ErrorBox message={error} onRetry={reload} />;
 
   const rows = data.payments.filter((p: PaymentHistoryRow) => match(filter, p.status));
-  const last = data.payouts[0];
+  const last = data.payouts[data.payouts.length - 1]; // periode terbaru (urut naik)
   const steps: readonly (readonly [string, string, boolean])[] = last
     ? [
         ["Iuran terkumpul", "Periode ditutup dengan dana yang terkumpul", true],
@@ -119,7 +119,7 @@ export default function HistoryPage() {
           last.mode === "simulated" || last.mode === "SIMULATED" ? "Disimulasikan di sandbox payout" : "Dikirim lewat Midtrans Iris (sandbox)",
           last.status !== "FAILED",
         ],
-        ["Dicatat di smart contract", "markPayout dengan hash referensi pencairan. Cocokkan di portal verifikasi publik.", false],
+        ["Dicatat di smart contract", "markPayout dengan hash referensi pencairan. Cocokkan di portal verifikasi publik.", last?.chainStatus === "confirmed"],
       ]
     : [];
 
