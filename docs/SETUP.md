@@ -48,10 +48,16 @@ Lalu:
 ```powershell
 npm run migrate
 npm run typecheck
-npm test            # 102 tes harus lulus
+npm test            # 107 tes harus lulus
 npm run dev         # http://localhost:3001
 ```
 Setiap `.env` berubah, restart `npm run dev` (tidak dimuat ulang otomatis).
+
+Menu **Operator** (konsol rekonsiliasi) hanya muncul untuk peran admin. Daftar dulu lewat aplikasi, lalu jadikan akun itu admin:
+```powershell
+npm run admin:grant -- email-anda@contoh.id      # tambah --revoke untuk mencabut
+```
+Peran disimpan di database dan diperiksa server; nama atau awalan email tidak berpengaruh.
 
 Kalau `npm run migrate` gagal dengan "Connection terminated", Postgres belum siap. Tunggu beberapa detik lalu ulangi.
 

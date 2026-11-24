@@ -4,6 +4,7 @@ import { api, ApiError } from "../api";
 import { Badge, Button, Card, ErrorBox, Loading, Mono, Td, Th } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { dateTime, etherscanTx, orderLabel, paymentMethod, rupiah, shortHash } from "../lib/format";
+import { PayoutBadge, PayoutDetail } from "../components/PayoutDetail";
 import type { Circle, CirclePaymentItem, CirclePayoutItem } from "../types";
 
 const FILTERS = ["Semua", "Lunas", "Menunggu rantai", "Gagal atau kedaluwarsa"] as const;
@@ -45,7 +46,6 @@ async function loadHistory() {
   return { payments, payouts };
 }
 
-const payoutLabel = { SIMULATED: "Disimulasikan", QUEUED: "Dalam antrean", APPROVED: "Disetujui", COMPLETED: "Selesai", FAILED: "Gagal" } as const;
 const ORDER_ERR: Record<string, string> = {
   NOT_CANCELLABLE: "Order ini tidak bisa dibatalkan lagi (bukan PENDING, atau gateway menolak).",
   NOT_EXPIRABLE: "Order ini tidak bisa dikedaluwarsakan lagi (bukan PENDING, atau gateway menolak).",
@@ -55,6 +55,7 @@ const ORDER_ERR: Record<string, string> = {
 export default function HistoryPage() {
   const [filter, setFilter] = useState<Filter>("Semua");
   const [busy, setBusy] = useState<string | null>(null);
+  const [selectedPayout, setSelectedPayout] = useState<number | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const { data, error, loading, reload } = useAsync(loadHistory, []);
 
@@ -109,19 +110,8 @@ export default function HistoryPage() {
   if (!data) return <ErrorBox message={error} onRetry={reload} />;
 
   const rows = data.payments.filter((p: PaymentHistoryRow) => match(filter, p.status));
-  const last = data.payouts[data.payouts.length - 1]; // periode terbaru (urut naik)
-  const steps: readonly (readonly [string, string, boolean])[] = last
-    ? [
-        ["Iuran terkumpul", "Periode ditutup dengan dana yang terkumpul", true],
-        ["Periode siap cair", "Penerima sesuai urutan terkunci", true],
-        [
-          "Pencairan ke rekening penerima",
-          last.mode === "simulated" || last.mode === "SIMULATED" ? "Disimulasikan di sandbox payout" : "Dikirim lewat Midtrans Iris (sandbox)",
-          last.status !== "FAILED",
-        ],
-        ["Dicatat di smart contract", "markPayout dengan hash referensi pencairan. Cocokkan di portal verifikasi publik.", last?.chainStatus === "confirmed"],
-      ]
-    : [];
+  // data.payouts sudah urut terbaru dulu; pilihan pengguna menggantikan bawaan.
+  const last = data.payouts.find((p: PayoutHistoryRow) => p.id === selectedPayout) ?? data.payouts[0];
 
   return (
     <div className="w-full space-y-6">
@@ -203,7 +193,8 @@ export default function HistoryPage() {
 
       <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
         <Card className="overflow-x-auto">
-          <h2 className="mb-2 text-lg sm:text-xl font-extrabold">Status pencairan</h2>
+          <h2 className="mb-1 text-lg sm:text-xl font-extrabold">Status pencairan</h2>
+          <p className="mb-2 text-xs text-stone-500">Klik satu baris untuk melihat langkah dan rinciannya.</p>
           {data.payouts.length === 0 ? (
             <p className="py-4 text-sm text-stone-500">Belum ada pencairan. Pencairan muncul setelah sebuah periode siap cair.</p>
           ) : (
@@ -213,15 +204,15 @@ export default function HistoryPage() {
               </thead>
               <tbody>
                 {data.payouts.map((p: PayoutHistoryRow) => (
-                  <tr key={p.id}>
+                  <tr
+                    key={p.id}
+                    onClick={() => setSelectedPayout(p.id)}
+                    className={`cursor-pointer hover:bg-cream ${last?.id === p.id ? "bg-mint/40" : ""}`}
+                  >
                     <Td><b>{p.circle}</b><div className="text-xs text-stone-500">Periode {p.periodNo}</div></Td>
                     <Td>{p.recipient}</Td>
                     <Td><b>{rupiah(p.amount)}</b></Td>
-                    <Td>
-                      <Badge tone={p.status === "FAILED" ? "red" : p.status === "COMPLETED" ? "green" : "purple"}>
-                        {payoutLabel[p.status as keyof typeof payoutLabel] ?? p.status}
-                      </Badge>
-                    </Td>
+                    <Td><PayoutBadge status={p.status} /></Td>
                   </tr>
                 ))}
               </tbody>
@@ -229,31 +220,9 @@ export default function HistoryPage() {
           )}
         </Card>
 
-        {last && steps.length > 0 && (
-          <Card className="space-y-4 text-sm">
-            <div>
-              <h2 className="text-lg sm:text-xl font-extrabold">{last.circle} · Periode {last.periodNo}</h2>
-              <p className="text-xs sm:text-sm text-stone-500">
-                Pencairan ke {last.recipient} ({last.mode === "simulated" || last.mode === "SIMULATED" ? "simulasi sandbox" : "Iris sandbox"})
-              </p>
-            </div>
-            <div className="space-y-3">
-              {steps.map(([t, d, done], i) => (
-                <div key={t} className="flex gap-3">
-                  <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold ${done ? "bg-brand text-white" : "border-2 border-violet-800 text-violet-800"}`}>
-                    {done ? "✓" : i + 1}
-                  </span>
-                  <div>
-                    <b className="text-xs sm:text-sm block">{t}</b>
-                    <p className="text-xs text-stone-500">{d}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="rounded-xl bg-cream p-3 sm:p-4 text-xs text-stone-600">
-              Hash referensi pencairan disimpan di contract, bukan nomor rekeningnya.
-              <div className="mt-1 break-all"><Mono>payoutRefHash: {shortHash(last.payoutRefHash)}</Mono></div>
-            </div>
+        {last && (
+          <Card>
+            <PayoutDetail payout={last} title={last.circle} />
           </Card>
         )}
       </div>

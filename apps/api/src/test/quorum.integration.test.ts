@@ -40,8 +40,8 @@ function dbTest(name: string, fn: () => Promise<void>) {
 }
 
 const code = (e: unknown) => (e as { code?: string }).code;
-const asUser = (m: Seeded["members"][number]) => ({ id: m.userId, name: m.name, email: m.email });
-const outsider = { id: 999999, name: "Orang Asing", email: "asing@example.com" };
+const asUser = (m: Seeded["members"][number]) => ({ id: m.userId, name: m.name, email: m.email, role: "user" as const });
+const outsider = { id: 999999, name: "Orang Asing", email: "asing@example.com", role: "user" as const };
 
 async function checkoutFor(s: Seeded, index: number) {
   const m = s.members[index]!;
@@ -178,6 +178,32 @@ describe("kuorum: usulan tutup periode", () => {
     assert.equal(payout.amount, 10000);
     assert.equal(await periodStatus(s.periodId), "done");
     assert.equal(await periodStatus(s.period2Id), "running");
+  });
+
+  dbTest("rincian pencairan: penerima, nominal, asal dana, dan cara periode ditutup", async () => {
+    const s = await seed3();
+    await pay(s, 0);
+    const pr = await ctx.proposals.createClosePeriodProposal(asUser(s.members[0]!), s.periodId);
+    await ctx.proposals.castVote(asUser(s.members[0]!), pr.id, true);
+    await ctx.proposals.castVote(asUser(s.members[1]!), pr.id, true);
+    await ctx.payouts.createPayout(asUser(s.members[0]!), { periodId: s.periodId, mode: "simulated" });
+
+    const { payouts } = await ctx.circles.circlePayments(s.members[1]!.userId, s.circleId);
+    assert.equal(payouts.length, 1);
+    const p = payouts[0]!;
+    assert.equal(p.amount, 10000);
+    assert.equal(p.recipientName, s.members[0]!.name); // penerima giliran 1
+    assert.equal(p.contributionTotal, 10000);
+    assert.equal(p.penaltyTotal, 0);
+    assert.equal(p.adminFeeTotal, 1000); // pendapatan platform, tidak ikut dicairkan
+    assert.equal(p.paidCount, 1);
+    assert.equal(p.memberCount, 3);
+    assert.equal(p.contributors.length, 1);
+    assert.equal(p.closedBy, "quorum");
+    assert.equal(p.approveVotes, 2);
+    assert.equal(p.quorumNeeded, 2);
+    assert.equal(p.recipientAccountHash, null); // simulasi: tidak ada rekening
+    assert.ok(!JSON.stringify(p).includes("example.com")); // tanpa email
   });
 
   dbTest("ditolak bila kuorum mustahil tercapai; periode tetap berjalan; usulan baru boleh dibuat", async () => {

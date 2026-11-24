@@ -51,7 +51,7 @@ function dbTest(name: string, fn: () => Promise<void>) {
 }
 
 const code = (e: unknown) => (e as { code?: string }).code;
-const asUser = (m: Seeded["members"][number]) => ({ id: m.userId, name: m.name, email: m.email });
+const asUser = (m: Seeded["members"][number]) => ({ id: m.userId, name: m.name, email: m.email, role: "user" as const });
 
 async function checkoutFor(s: Seeded, index: number) {
   const m = s.members[index]!;
@@ -559,7 +559,7 @@ describe("kelompok on-chain (createCircle)", () => {
   dbTest("job pembayaran ditahan sampai kelompok on-chain; createCircle didahulukan", async () => {
     const s = await startedCircle();
     const co = await ctx.checkout.createCheckout(
-      { id: s.u1.id, name: s.u1.name, email: s.u1.email },
+      { id: s.u1.id, name: s.u1.name, email: s.u1.email, role: "user" as const },
       { circleId: s.circleId, periodId: s.periodId, memberId: s.members[0]!.id },
     );
     await settle(co);
@@ -588,7 +588,7 @@ describe("kelompok on-chain (createCircle)", () => {
   dbTest("job pembayaran juga ditahan bila createCircle gagal", async () => {
     const s = await startedCircle();
     const co = await ctx.checkout.createCheckout(
-      { id: s.u1.id, name: s.u1.name, email: s.u1.email },
+      { id: s.u1.id, name: s.u1.name, email: s.u1.email, role: "user" as const },
       { circleId: s.circleId, periodId: s.periodId, memberId: s.members[0]!.id },
     );
     await settle(co);
@@ -611,13 +611,13 @@ describe("kelompok on-chain (createCircle)", () => {
 
   dbTest("rekonsiliasi memuat status kelompok di chain", async () => {
     const s = await startedCircle();
-    const before = await ctx.reconciliation.reconcileCircle(s.u1, s.circleId, false);
+    const before = await ctx.reconciliation.reconcileCircle({ ...s.u1, role: "user" as const }, s.circleId, false);
     assert.equal(before.chain.chainCircleId, null);
     assert.equal(before.chain.createCircleJob?.status, "queued");
     assert.equal(before.summary.issues, 0);
 
     await ctx.pool.query("UPDATE chain_jobs SET status = 'failed'");
-    const failed = await ctx.reconciliation.reconcileCircle(s.u1, s.circleId, false);
+    const failed = await ctx.reconciliation.reconcileCircle({ ...s.u1, role: "user" as const }, s.circleId, false);
     assert.equal(failed.summary.issues, 1);
   });
 });

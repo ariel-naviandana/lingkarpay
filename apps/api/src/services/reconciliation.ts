@@ -30,7 +30,7 @@ interface OrderLine {
 
 /**
  * Laporan rekonsiliasi satu kelompok: mencocokkan pesanan (database), status gateway,
- * dan pencatatan on-chain. Hanya untuk pembuat kelompok (operator).
+ * dan pencatatan on-chain. Untuk pembuat kelompok (operator) dan admin platform.
  * live=true menambah pemeriksaan ke Status API Midtrans (maksimal 50 order terbaru).
  */
 export async function reconcileCircle(user: AuthUser, circleId: number, live: boolean) {
@@ -39,8 +39,8 @@ export async function reconcileCircle(user: AuthUser, circleId: number, live: bo
     [circleId],
   );
   if (!circle.rows[0]) throw notFound("Kelompok");
-  if (circle.rows[0].created_by !== user.id) {
-    throw forbidden("Laporan rekonsiliasi hanya untuk pembuat kelompok (operator)");
+  if (circle.rows[0].created_by !== user.id && user.role !== "admin") {
+    throw forbidden("Laporan rekonsiliasi hanya untuk pembuat kelompok atau admin platform");
   }
 
   const lines = (

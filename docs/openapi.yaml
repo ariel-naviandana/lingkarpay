@@ -96,6 +96,20 @@ paths:
               schema: { type: object, properties: { user: { $ref: "#/components/schemas/User" } } }
         "401": { $ref: "#/components/responses/Error" }
 
+  /admin/circles:
+    get:
+      tags: [Auth]
+      summary: Semua kelompok (hanya admin platform)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK (setiap kelompok memuat creatorName, tanpa email)
+          content:
+            application/json:
+              schema: { type: object, properties: { circles: { type: array, items: { type: object } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+
   /circles:
     post:
       tags: [Kelompok]
@@ -518,6 +532,7 @@ components:
         id: { type: integer }
         name: { type: string }
         email: { type: string }
+        role: { type: string, enum: [user, admin] }
 
     AuthResult:
       type: object

@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Card, Mono, Td, Th, Select } from "../../components/ui";
 import { api } from "../../api";
 import { formatDateTime, rupiah, shortenHash } from "../../lib/format";
-import type { Circle, ReconciliationReport } from "../../types";
+import type { AdminCircle, ReconciliationReport } from "../../types";
 
 export default function OperatorPage() {
-  const [circles, setCircles] = useState<Circle[]>([]);
-  const [selectedCircleId, setSelectedCircleId] = useState<number>(1);
+  const [circles, setCircles] = useState<AdminCircle[]>([]);
+  const [selectedCircleId, setSelectedCircleId] = useState<number>(0);
   const [report, setReport] = useState<ReconciliationReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [isReconciling, setIsReconciling] = useState(false);
@@ -15,14 +15,18 @@ export default function OperatorPage() {
 
   const loadCircles = useCallback(async () => {
     try {
-      const res = await api.circles();
+      // Admin melihat semua kelompok di platform (peran diperiksa server).
+      const res = await api.adminCircles();
       const list = res.circles || [];
       setCircles(list);
       if (list.length > 0) {
         setSelectedCircleId(list[0].id);
+      } else {
+        setLoading(false);
       }
-    } catch {
-      // Circles load fail
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Gagal memuat daftar kelompok.");
+      setLoading(false);
     }
   }, []);
 
@@ -115,14 +119,14 @@ export default function OperatorPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {circles.length > 0 && (
-            <div className="w-48">
+            <div className="w-64">
               <Select
                 value={selectedCircleId}
                 onChange={(e) => setSelectedCircleId(Number(e.target.value))}
               >
                 {circles.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name} (ID #{c.id})
+                    {c.name} (ID #{c.id}) · oleh {c.creatorName}
                   </option>
                 ))}
               </Select>
@@ -272,7 +276,11 @@ export default function OperatorPage() {
           </div>
 
           <div className="space-y-3">
-            {issueOrders.length === 0 ? (
+            {totalOrders === 0 ? (
+              <p className="rounded-xl bg-cream p-4 text-center text-xs text-stone-500">
+                Belum ada transaksi yang bisa dicocokkan pada kelompok ini.
+              </p>
+            ) : issueOrders.length === 0 ? (
               <p className="rounded-xl bg-mint/50 p-4 text-center text-xs text-brand font-semibold">
                 ✓ Semua transaksi cocok di database, payment gateway, dan smart contract!
               </p>

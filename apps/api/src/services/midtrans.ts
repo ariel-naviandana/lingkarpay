@@ -90,10 +90,11 @@ export async function createSnapTransaction(
       data.message ||
       res.text;
 
+    // Jangan mencetak seluruh body: memuat nama dan email pelanggan.
     console.error("[Midtrans Error]", {
       status: res.status,
       errorDetail: rawError,
-      body,
+      orderId: (body as { transaction_details?: { order_id?: string } } | undefined)?.transaction_details?.order_id,
       response: data,
       text: res.text,
     });

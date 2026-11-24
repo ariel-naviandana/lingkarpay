@@ -11,7 +11,14 @@ Kode error umum: `VALIDATION_ERROR` 400, `UNAUTHORIZED` 401, `FORBIDDEN` 403, `N
 |---|---|
 | `POST /auth/register` | Body `{ name, email, password(min 8) }` → 201 `{ user, token }`. 409 `EMAIL_TAKEN`. |
 | `POST /auth/login` | Body `{ email, password }` → `{ user, token }`. 401 `INVALID_CREDENTIALS`. |
-| `GET /auth/me` | → `{ user }` |
+| `GET /auth/me` | → `{ user }`. `user` memuat `role` (`user` atau `admin`), dibaca dari database; frontend tidak menentukannya. |
+
+## Admin platform
+| | |
+|---|---|
+| `GET /admin/circles` | Hanya `role = admin` (403 bagi yang lain, 401 tanpa login). → `{ circles: [...] }` semua kelompok, ditambah `creatorName` (tanpa email). Dipakai konsol Operator. |
+
+Peran `admin` diberikan di server: `npm run admin:grant -- email@contoh.id` (tambah `--revoke` untuk mencabut). Pendaftaran selalu menghasilkan `user`, apa pun emailnya. Admin boleh membuka laporan rekonsiliasi kelompok mana pun, tetapi tidak otomatis boleh mencairkan atau memberi suara (itu tetap hak pembuat kelompok dan anggota).
 
 ## Kelompok (circles)
 | | |
@@ -23,7 +30,7 @@ Kode error umum: `VALIDATION_ERROR` 400, `UNAUTHORIZED` 401, `FORBIDDEN` 403, `N
 | `POST /circles/:id/members` | Body `{ email }` (pengguna harus sudah terdaftar). Hanya pembuat, hanya saat `draft`. 409 `CIRCLE_FULL`, `ALREADY_MEMBER`, `CIRCLE_STARTED`. |
 | `POST /circles/:id/start` | Body `{ order?: [memberId,...] }` (urutan giliran; bawaan urutan bergabung). Mengunci urutan dan parameter, membuat semua periode (periode 1 `running`). 409 `CIRCLE_NOT_FULL`. 400 `INVALID_ORDER`. |
 | `GET /circles/:id/periods` | → `{ periods: [{ id, periodNo, dueDate, status, recipientMemberId }] }` |
-| `GET /circles/:id/payments` | → `{ payments: [...], payouts: [...] }`. Tiap pembayaran memuat `status`, rincian jumlah, `chainStatus`, `txHash`. Terbuka bagi semua anggota. Tiap `payouts[]` juga memuat `chainStatus` (status job `markPayout`; `confirmed` = sudah tercatat di chain) dan `txHash`. |
+| `GET /circles/:id/payments` | → `{ payments: [...], payouts: [...] }`. Tiap pembayaran memuat `status`, rincian jumlah, `chainStatus`, `txHash`. Terbuka bagi semua anggota. Tiap `payouts[]` memuat rincian pencairan: `recipientName`, `recipientMemberRef`, `amount`, `mode`, `status`, `irisReferenceNo`, `recipientAccountHash` (hanya hash; nomor rekening tidak disimpan), asal dana (`contributionTotal`, `penaltyTotal`, `adminFeeTotal` yang tidak ikut dicairkan, `paidCount`, `memberCount`, `contributors[]`), cara periode ditutup (`closedBy`: `quorum` atau `all_paid`, `approveVotes`, `quorumNeeded`, `closedAt`), serta status pencatatan chain (`chainStatus` = status job `markPayout`, `txHash`, `chainConfirmedAt`). |
 
 ## Checkout dan order
 | | |

@@ -103,7 +103,7 @@ export interface Seeded {
   periodId: number;
   period2Id: number;
   members: SeededMember[];
-  owner: { id: number; name: string; email: string };
+  owner: { id: number; name: string; email: string; role: "user" };
 }
 
 /** Membuat kelompok aktif dengan anggota dan dua periode (periode 1 berjalan). */
@@ -158,7 +158,7 @@ export async function seedCircle(pool: Pool, opts: SeedOptions = {}): Promise<Se
     periodId: p1.rows[0]!.id,
     period2Id: p2.rows[0]!.id,
     members,
-    owner: users[0]!,
+    owner: { ...users[0]!, role: "user" as const },
   };
 }
 

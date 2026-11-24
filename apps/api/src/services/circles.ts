@@ -117,6 +117,18 @@ export async function listCircles(userId: number) {
   return rows.map((r) => ({ ...toCircle(r), joinedCount: r.joined }));
 }
 
+/** Semua kelompok di platform (admin). Memuat pembuat dengan nama saja, tanpa email. */
+export async function listAllCircles() {
+  const { rows } = await pool.query<CircleRow & { joined: number; creator_name: string }>(
+    `SELECT c.*, u.name AS creator_name,
+            (SELECT count(*)::int FROM members m WHERE m.circle_id = c.id) AS joined
+       FROM circles c
+       JOIN users u ON u.id = c.created_by
+      ORDER BY c.id DESC`,
+  );
+  return rows.map((r) => ({ ...toCircle(r), joinedCount: r.joined, creatorName: r.creator_name }));
+}
+
 export async function getCircleDetail(userId: number, circleId: number) {
   const myMemberId = await requireMember(pool, circleId, userId);
   const circle = await getCircleRow(pool, circleId);
@@ -421,31 +433,79 @@ export async function circlePayments(userId: number, circleId: number) {
   const payouts = (
     await pool.query<{
       id: number;
+      period_id: number;
       period_no: number;
       amount: number;
       mode: string;
       status: string;
       member_ref: string;
+      recipient_name: string;
       payout_ref_hash: string;
+      recipient_account_hash: string | null;
+      iris_reference_no: string | null;
       created_at: Date;
+      updated_at: Date;
       chain_status: string | null;
       tx_hash: string | null;
+      chain_confirmed_at: Date | null;
     }>(
-      `SELECT po.id, p.period_no, po.amount, po.mode, po.status, m.member_ref,
-              po.payout_ref_hash, po.created_at,
+      `SELECT po.id, po.period_id, p.period_no, po.amount, po.mode, po.status, m.member_ref,
+              u.name AS recipient_name, po.payout_ref_hash, po.recipient_account_hash,
+              po.iris_reference_no, po.created_at, po.updated_at,
               j.status AS chain_status,
               (SELECT t.tx_hash FROM chain_transactions t
                 WHERE t.job_id = j.id AND t.status = 'confirmed'
-                ORDER BY t.id DESC LIMIT 1) AS tx_hash
+                ORDER BY t.id DESC LIMIT 1) AS tx_hash,
+              (SELECT t.confirmed_at FROM chain_transactions t
+                WHERE t.job_id = j.id AND t.status = 'confirmed'
+                ORDER BY t.id DESC LIMIT 1) AS chain_confirmed_at
          FROM payouts po
          JOIN periods p ON p.id = po.period_id
          JOIN members m ON m.id = po.recipient_member_id
+         JOIN users u ON u.id = m.user_id
          LEFT JOIN chain_jobs j ON j.payout_id = po.id AND j.kind = 'markPayout'
         WHERE p.circle_id = $1
         ORDER BY p.period_no`,
       [circleId],
     )
   ).rows;
+
+  // Rincian dana tiap pencairan: iuran yang masuk per periode, dan cara periode ditutup.
+  const paidOrders = (
+    await pool.query<{
+      period_id: number;
+      member_ref: string;
+      name: string;
+      amount: number;
+      penalty_amount: number;
+      admin_fee: number;
+      paid_at: Date | null;
+    }>(
+      `SELECT o.period_id, m.member_ref, u.name, o.amount, o.penalty_amount, o.admin_fee, o.paid_at
+         FROM orders o
+         JOIN periods p ON p.id = o.period_id
+         JOIN members m ON m.id = o.member_id
+         JOIN users u ON u.id = m.user_id
+        WHERE p.circle_id = $1 AND o.status IN ('SETTLED', 'SETTLED_PENDING_CHAIN', 'ANCHORED')
+        ORDER BY o.paid_at NULLS LAST, o.id`,
+      [circleId],
+    )
+  ).rows;
+
+  const executed = (
+    await pool.query<{ period_id: number; updated_at: Date; approve_votes: number }>(
+      `SELECT pr.period_id, pr.updated_at,
+              (SELECT count(*)::int FROM proposal_votes v WHERE v.proposal_id = pr.id AND v.approve) AS approve_votes
+         FROM proposals pr
+        WHERE pr.circle_id = $1 AND pr.status = 'executed'`,
+      [circleId],
+    )
+  ).rows;
+
+  const memberTotal = (
+    await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM members WHERE circle_id = $1", [circleId])
+  ).rows[0]!.n;
+  const quorumNeeded = Math.floor(memberTotal / 2) + 1;
 
   return {
     payments: orders.map((o) => ({
@@ -464,17 +524,49 @@ export async function circlePayments(userId: number, circleId: number) {
       chainStatus: o.chain_status,
       txHash: o.tx_hash,
     })),
-    payouts: payouts.map((p) => ({
-      id: p.id,
-      periodNo: p.period_no,
-      amount: p.amount,
-      mode: p.mode,
-      status: p.status,
-      recipientMemberRef: p.member_ref,
-      payoutRefHash: p.payout_ref_hash,
-      createdAt: p.created_at,
-      chainStatus: p.chain_status,
-      txHash: p.tx_hash,
-    })),
+    payouts: payouts.map((p) => {
+      const paid = paidOrders.filter((o) => o.period_id === p.period_id);
+      const closing = executed.find((e) => e.period_id === p.period_id);
+      const sum = (f: (o: (typeof paid)[number]) => number) => paid.reduce((a, o) => a + Number(f(o)), 0);
+      const lastPaid = paid.reduce<Date | null>(
+        (a, o) => (o.paid_at && (!a || o.paid_at > a) ? o.paid_at : a),
+        null,
+      );
+      return {
+        id: p.id,
+        periodNo: p.period_no,
+        amount: p.amount,
+        mode: p.mode,
+        status: p.status,
+        recipientMemberRef: p.member_ref,
+        recipientName: p.recipient_name,
+        payoutRefHash: p.payout_ref_hash,
+        recipientAccountHash: p.recipient_account_hash, // hash rekening; nomor asli tidak disimpan
+        irisReferenceNo: p.iris_reference_no,
+        createdAt: p.created_at,
+        updatedAt: p.updated_at,
+        chainStatus: p.chain_status,
+        txHash: p.tx_hash,
+        chainConfirmedAt: p.chain_confirmed_at,
+        // Dari mana dana pencairan berasal. Biaya admin adalah pendapatan platform, tidak ikut dicairkan.
+        contributionTotal: sum((o) => o.amount),
+        penaltyTotal: sum((o) => o.penalty_amount),
+        adminFeeTotal: sum((o) => o.admin_fee),
+        paidCount: paid.length,
+        memberCount: memberTotal,
+        contributors: paid.map((o) => ({
+          memberRef: o.member_ref,
+          name: o.name,
+          amount: o.amount,
+          penaltyAmount: o.penalty_amount,
+          paidAt: o.paid_at,
+        })),
+        lastPaidAt: lastPaid,
+        closedBy: closing ? ("quorum" as const) : ("all_paid" as const),
+        closedAt: closing?.updated_at ?? lastPaid,
+        approveVotes: closing?.approve_votes ?? null,
+        quorumNeeded: closing ? quorumNeeded : null,
+      };
+    }),
   };
 }

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import { PayoutPanel, QuorumCard } from "../components/CircleActions";
+import { PayoutDetail } from "../components/PayoutDetail";
 import DraftActions from "../components/DraftActions";
 import PayButton from "../components/PayButton";
 import {
@@ -418,7 +419,20 @@ export default function GroupDetailPage() {
             </div>
           </Card>
 
-          <PayoutPanel detail={detail} onChanged={reload} />
+          <PayoutPanel detail={detail} payments={history.payments} onChanged={reload} />
+          {history.payouts.length > 0 && (
+            <Card className="space-y-3">
+              <h2 className="text-lg sm:text-xl font-extrabold">Riwayat pencairan</h2>
+              {[...history.payouts].reverse().map((po, i) => (
+                <details key={po.id} open={i === 0} className="border-t border-sand pt-3 first:border-0 first:pt-0">
+                  <summary className="cursor-pointer text-sm font-semibold">
+                    Periode {po.periodNo} · {rupiah(po.amount)} ke {po.recipientName ?? po.recipientMemberRef}
+                  </summary>
+                  <div className="mt-3"><PayoutDetail payout={po} /></div>
+                </details>
+              ))}
+            </Card>
+          )}
           <QuorumCard detail={detail} proposal={proposal} onChanged={reload} />
         </div>
       </div>

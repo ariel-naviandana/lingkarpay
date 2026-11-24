@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, ApiError } from "../api";
-import type { CircleDetail, MemberView, Period, Proposal } from "../types";
+import { PAID_STATUSES, type CircleDetail, type CirclePaymentItem, type MemberView, type Period, type Proposal } from "../types";
 import { dateTime, rupiah } from "../lib/format";
 import { Badge, Button, Card, ProgressBar } from "./ui";
 
@@ -88,19 +88,30 @@ export function QuorumCard({ detail, proposal, onChanged }: { detail: CircleDeta
 }
 
 /** Pencairan (simulasi sandbox) untuk pengelola, per periode yang sudah siap cair. */
-export function PayoutPanel({ detail, onChanged }: { detail: CircleDetail; onChanged: () => void }) {
+export function PayoutPanel({ detail, payments = [], onChanged }: { detail: CircleDetail; payments?: CirclePaymentItem[]; onChanged: () => void }) {
   const ready = detail.periods.filter((p: Period) => p.status === "ready_payout");
   const a = useAction(onChanged);
   if (!detail.isCreator || ready.length === 0) return null;
   const name = (id: number | null) => detail.members.find((m: MemberView) => m.memberId === id)?.name ?? "–";
+  // Perkiraan nominal: iuran + penalti dari pembayaran lunas periode itu (angka final dihitung server).
+  const estimate = (periodNo: number) =>
+    payments
+      .filter((x) => x.periodNo === periodNo && PAID_STATUSES.includes(x.status))
+      .reduce((sum, x) => sum + x.amount + x.penaltyAmount, 0);
+  const paidCount = (periodNo: number) =>
+    payments.filter((x) => x.periodNo === periodNo && PAID_STATUSES.includes(x.status)).length;
   return (
     <Card className="space-y-3 text-sm">
       <h2 className="text-xl font-extrabold">Pencairan</h2>
       {ready.map((p: Period) => (
         <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-sand pt-3 first:border-0 first:pt-0">
-          <div><b>Periode {p.periodNo}</b><div className="text-xs text-stone-500">Penerima: {name(p.recipientMemberId)}</div></div>
+          <div>
+            <b>Periode {p.periodNo}</b>
+            <div className="text-xs text-stone-500">Dikirim ke: {name(p.recipientMemberId)}</div>
+            <div className="text-xs text-stone-500">Nominal: {rupiah(estimate(p.periodNo))} dari {paidCount(p.periodNo)} dari {detail.members.length} iuran lunas</div>
+          </div>
           <Button disabled={a.busy}
-            onClick={() => { if (confirm(`Cairkan periode ${p.periodNo} ke ${name(p.recipientMemberId)}? (simulasi sandbox)`)) void a.run(async () => {
+            onClick={() => { if (confirm(`Cairkan ${rupiah(estimate(p.periodNo))} (periode ${p.periodNo}) ke ${name(p.recipientMemberId)}? Ini simulasi sandbox, tidak ada uang yang bergerak.`)) void a.run(async () => {
               const r = await api.simulatePayout(p.id);
               return `Pencairan ${rupiah(r.amount)} dibuat (${r.mode}, ${r.status}).`;
             }); }}>Cairkan (simulasi)</Button>

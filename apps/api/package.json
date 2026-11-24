@@ -8,6 +8,7 @@
     "start": "tsx src/server.ts",
     "typecheck": "tsc --noEmit",
     "migrate": "tsx src/db/migrate.ts",
+    "admin:grant": "tsx src/db/grantAdmin.ts",
     "test": "node --import tsx --test --test-concurrency=1 \"src/**/*.test.ts\"",
     "chain:worker": "tsx src/chain/worker.ts"
   },

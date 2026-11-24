@@ -7,10 +7,13 @@ import { randomHex, sha256Hex } from "../lib/hash.js";
 // sesi berupa token acak yang hanya disimpan dalam bentuk hash.
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+export type UserRole = "user" | "admin";
+
 export interface AuthUser {
   id: number;
   name: string;
   email: string;
+  role: UserRole;
 }
 
 function scryptAsync(password: string, salt: Buffer): Promise<Buffer> {
@@ -51,7 +54,7 @@ export async function register(
   try {
     const { rows } = await pool.query<AuthUser>(
       `INSERT INTO users (name, email, password_hash)
-       VALUES ($1, $2, $3) RETURNING id, name, email`,
+       VALUES ($1, $2, $3) RETURNING id, name, email, role`,
       [name.trim(), normalized, await hashPassword(password)],
     );
     const user = rows[0]!;
@@ -67,7 +70,7 @@ export async function login(
   password: string,
 ): Promise<{ user: AuthUser; token: string }> {
   const { rows } = await pool.query<AuthUser & { password_hash: string }>(
-    "SELECT id, name, email, password_hash FROM users WHERE email = $1",
+    "SELECT id, name, email, role, password_hash FROM users WHERE email = $1",
     [email.trim().toLowerCase()],
   );
   const row = rows[0];
@@ -75,13 +78,13 @@ export async function login(
   if (!row || !(await verifyPassword(password, row.password_hash))) {
     throw new AppError("INVALID_CREDENTIALS", "Email atau kata sandi salah", 401);
   }
-  const user = { id: row.id, name: row.name, email: row.email };
+  const user: AuthUser = { id: row.id, name: row.name, email: row.email, role: row.role };
   return { user, token: await createSession(user.id) };
 }
 
 export async function authenticate(token: string): Promise<AuthUser | null> {
   const { rows } = await pool.query<AuthUser>(
-    `SELECT u.id, u.name, u.email
+    `SELECT u.id, u.name, u.email, u.role
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = $1 AND s.expires_at > now()`,
     [sha256Hex(token)],

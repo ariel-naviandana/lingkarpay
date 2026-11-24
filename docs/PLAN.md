@@ -3,7 +3,7 @@
 Acuan: 11 November 2026. Tenggat: progress report di kelas sebelum 24 November, business case 24 November, pembekuan prototipe 25 November, presentasi 26 November sampai 15 Desember (pengurangan nilai mulai 3 Desember).
 
 ## Ringkasan
-Seluruh tugas jalur payment gateway selesai dan terverifikasi, begitu juga sambungan ke smart contract: `npm run typecheck` bersih, 102 tes backend dan 40 tes contract lulus, smoke test alur penuh dan kuorum lolos, lima skenario pembayaran terbukti di Midtrans sandbox, dan alur lengkap **bayar fiat → webhook → server memanggil smart contract → tercatat di Ethereum Sepolia** terbukti dengan hash transaksi (`docs/BUKTI_SEPOLIA.md`). Yang tersisa hanya hal opsional dan hal yang menjadi tugas jalur lain (frontend dan business case).
+Seluruh tugas jalur payment gateway selesai dan terverifikasi, begitu juga sambungan ke smart contract: `npm run typecheck` bersih, 107 tes backend dan 40 tes contract lulus, smoke test alur penuh dan kuorum lolos, lima skenario pembayaran terbukti di Midtrans sandbox, dan alur lengkap **bayar fiat → webhook → server memanggil smart contract → tercatat di Ethereum Sepolia** terbukti dengan hash transaksi (`docs/BUKTI_SEPOLIA.md`). Yang tersisa hanya hal opsional dan hal yang menjadi tugas jalur lain (frontend dan business case).
 
 ## Langkah pengerjaan
 | # | Langkah | Status | Bukti |
@@ -21,7 +21,7 @@ Seluruh tugas jalur payment gateway selesai dan terverifikasi, begitu juga sambu
 | 10 | Outbox ke modul chain | Selesai | Enam jenis job; terbukti dikonsumsi worker di Sepolia |
 | 11 | Pencairan | Simulasi selesai | Smoke test `-Both` dan `smoke-quorum`. Iris ditulis dari dokumentasi, belum diuji (opsional, lihat `IRIS.md`) |
 | 12 | Rekonsiliasi | Selesai | Tes dan smoke test. Mode `live=true` belum dicoba |
-| 13 | Tes otomatis | Selesai | 102 tes backend, 18 suite, 0 gagal |
+| 13 | Tes otomatis | Selesai | 107 tes backend, 19 suite, 0 gagal |
 | 14 | Dokumentasi | Selesai | `API.md`, `openapi.yaml`, `ERD.md`, `DESIGN.md`, `DEV_LOG.md`, `AI_STATEMENT.md`, `DEMO.md`, `PENJELASAN_KODE.md`, `BUKTI_SEPOLIA.md`, README tiap jalur |
 | + | Cancel dan expire lewat API | Selesai | Terbukti di sandbox (butuh izin Capability pada server key) |
 | + | Smart contract LingkarPay | Selesai | 40 tes; ter-deploy di Sepolia (v2) |
@@ -34,7 +34,7 @@ Perintah dijalankan dari `apps\api` (Windows PowerShell). Tes backend membutuhka
 | Pemeriksaan | Perintah | Hasil |
 |---|---|---|
 | Tipe backend | `npm run typecheck` | Bersih |
-| Tes backend | `npm test` | 102 lulus |
+| Tes backend | `npm test` | 107 lulus |
 | Tes contract | `npm test` (folder `contracts`) | 40 lulus |
 | Alur penuh, satu anggota | `scripts\smoke.ps1` | 19 pemeriksaan lolos |
 | Alur penuh, dua anggota + pencairan | `scripts\smoke.ps1 -Both` | 30 pemeriksaan lolos |

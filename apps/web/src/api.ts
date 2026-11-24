@@ -1,4 +1,5 @@
 import type {
+  AdminCircle,
   AuthResult,
   Circle,
   CircleDetail,
@@ -82,6 +83,7 @@ export const api = {
 
   // Circles
   circles: () => request<{ circles: Circle[] }>("GET", "/circles"),
+  adminCircles: () => request<{ circles: AdminCircle[] }>("GET", "/admin/circles"),
   circle: (id: number) => request<CircleDetail>("GET", `/circles/${id}`),
   publicCircle: (id: number) => request<CircleDetail>("GET", `/public/circles/${id}`),
   createCircle: (body: {

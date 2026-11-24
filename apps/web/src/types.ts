@@ -3,6 +3,7 @@ export interface User {
   id: number;
   name: string;
   email: string;
+  role: "user" | "admin"; // dari server; admin diberikan lewat npm run admin:grant
 }
 
 export interface AuthResult {
@@ -49,6 +50,11 @@ export interface Circle {
   joinedCount?: number;
   startedAt?: string | null;
   createdAt?: string;
+}
+
+/** Kelompok pada daftar admin: ditambah nama pembuat (tanpa email). */
+export interface AdminCircle extends Circle {
+  creatorName: string;
 }
 
 export interface Period {
@@ -135,6 +141,23 @@ export interface CirclePayoutItem {
   createdAt: string;
   chainStatus?: string | null; // status job markPayout (confirmed = sudah di chain)
   txHash?: string | null;
+  chainConfirmedAt?: string | null;
+  // Rincian pencairan: siapa penerimanya dan dari mana dananya.
+  recipientName?: string;
+  recipientAccountHash?: string | null; // hash rekening (nomor asli tidak disimpan)
+  irisReferenceNo?: string | null;
+  updatedAt?: string;
+  contributionTotal?: number;
+  penaltyTotal?: number;
+  adminFeeTotal?: number; // pendapatan platform, tidak ikut dicairkan
+  paidCount?: number;
+  memberCount?: number;
+  contributors?: { memberRef: string; name: string; amount: number; penaltyAmount: number; paidAt: string | null }[];
+  lastPaidAt?: string | null;
+  closedBy?: "quorum" | "all_paid";
+  closedAt?: string | null;
+  approveVotes?: number | null;
+  quorumNeeded?: number | null;
 }
 
 export interface CirclePaymentsResult {

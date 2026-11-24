@@ -27,7 +27,7 @@ export default function LoginPage() {
       if (tab === "register") {
         await register(name, email, password);
       } else {
-        await login(email, password, name);
+        await login(email, password);
       }
       nav("/dashboard");
     } catch (err) {

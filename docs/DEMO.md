@@ -6,7 +6,8 @@ Untuk progress report (di kelas, sebelum 24 November) dan presentasi (mulai 26 N
 - [ ] Docker Desktop menyala, `docker compose up -d` (Postgres).
 - [ ] Server key punya izin Snap Checkout, Core API, Cancel transaction, dan Expire transaction = Write (lihat `apps/api/README.md`).
 - [ ] `apps\api\.env` berisi: `DATABASE_URL`, `MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`, `MIDTRANS_SIGNATURE_KEY`.
-- [ ] `npm run migrate`, `npm run typecheck`, `npm test` (102 tes lulus). Di folder `contracts`: `npm test` (40 tes lulus).
+- [ ] Akun untuk konsol Operator: daftar lewat aplikasi, lalu `npm run admin:grant -- email@contoh.id` (peran admin dari database).
+- [ ] `npm run migrate`, `npm run typecheck`, `npm test` (107 tes lulus). Di folder `contracts`: `npm test` (40 tes lulus).
 - [ ] Untuk demo blockchain: `apps\api\.env` satu set aktif `CHAIN_NAME=sepolia`, `CHAIN_RPC_URL`, `OPERATOR_PRIVATE_KEY`, `LINGKARPAY_ADDRESS=0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2`; `npm run chain:worker` berjalan (baris pertama lognya menunjukkan Sepolia, operator, dan alamat contract yang benar).
 - [ ] Nyalakan tunnel **sekali** dan jangan dimatikan: `cloudflared tunnel --url http://localhost:3001`. Salin alamatnya ke Notification URL di dashboard Midtrans (`.../midtrans-webhook`), Save, reload untuk memastikan.
 - [ ] `powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1 -Both` lolos semua.
