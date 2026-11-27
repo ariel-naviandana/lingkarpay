@@ -124,11 +124,17 @@ $circle = Api POST "/circles" @{ name = "Smoke $stamp"; contributionAmount = 100
 $cid = $circle.id
 Check "buat kelompok" ($circle.status -eq "draft") "id=$cid"
 Check "biaya admin dari aplikasi" ($circle.adminFee -eq 1000) "adminFee=$($circle.adminFee)"
+Check "dana jaminan = iuran + penalti" ($circle.depositAmount -eq 10500) "depositAmount=$($circle.depositAmount)"
 Expect-ApiError "mulai sebelum lengkap ditolak" "CIRCLE_NOT_FULL" { Api POST "/circles/$cid/start" @{} $tokA }
 $inv = Api POST "/circles/$cid/members" @{ email = "smoke-b-$stamp@example.com" } $tokA
 Check "anggota B diundang" ($inv.status -eq "invited")
 Expect-ApiError "mulai sebelum undangan diterima ditolak" "INVITES_PENDING" { Api POST "/circles/$cid/start" @{} $tokA }
 $null = Api POST "/circles/$cid/invitation/accept" @{ payoutAccount = @{ channel = "GOPAY"; accountNumber = "081234567890"; accountName = "Smoke B" } } $tokB
+Expect-ApiError "mulai sebelum jaminan disetor ditolak" "DEPOSITS_PENDING" { Api POST "/circles/$cid/start" @{} $tokA }
+# Setoran jaminan disimulasikan (DEV_TOOLS) agar skrip tidak perlu membayar dua kali lagi di simulator.
+# Jalur sungguhan lewat Snap: tombol "Setor jaminan" di halaman kelompok (POST /circles/:id/deposit/checkout).
+$null = Api POST "/dev/circles/$cid/deposit/simulate" $null $tokA
+$null = Api POST "/dev/circles/$cid/deposit/simulate" $null $tokB
 $started = Api POST "/circles/$cid/start" @{} $tokA
 Check "kelompok dimulai, 2 periode" (($started.circle.status -eq "active") -and (@($started.periods).Count -eq 2))
 

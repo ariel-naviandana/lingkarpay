@@ -11,9 +11,9 @@ const FILTERS = ["Semua", "Lunas", "Menunggu rantai", "Gagal atau kedaluwarsa"] 
 type Filter = (typeof FILTERS)[number];
 const SETTLED = (s: string) => s === "SETTLED" || s === "SETTLED_PENDING_CHAIN";
 // Pelunasan tunggakan tidak dicatat ke contract (periode lamanya sudah ditutup), jadi lunas = selesai.
-const match = (f: Filter, p: { status: string; isArrearsPayment?: boolean }) => {
+const match = (f: Filter, p: { status: string; isArrearsPayment?: boolean; isDeposit?: boolean }) => {
   const s = p.status;
-  const arrearsPaid = !!p.isArrearsPayment && (SETTLED(s) || s === "ANCHORED");
+  const arrearsPaid = (!!p.isArrearsPayment || !!p.isDeposit) && (SETTLED(s) || s === "ANCHORED");
   return (
     f === "Semua" ||
     (f === "Lunas" && (s === "ANCHORED" || arrearsPaid)) ||
@@ -156,8 +156,11 @@ export default function HistoryPage() {
             </thead>
             <tbody>
               {rows.map((p: PaymentHistoryRow) => {
+                const settled = SETTLED(p.status) || p.status === "ANCHORED";
                 const [label, tone] =
-                  p.isArrearsPayment && (SETTLED(p.status) || p.status === "ANCHORED")
+                  p.isDeposit && settled
+                    ? (["Jaminan diterima", "green"] as const)
+                    : p.isArrearsPayment && settled
                     ? (["Lunas · tunggakan diteruskan", "green"] as const)
                     : orderLabel(p.status);
                 return (
@@ -166,13 +169,16 @@ export default function HistoryPage() {
                     <Td>
                       <Link to={`/groups/${p.circleId}`} className="font-bold hover:underline">{p.circle}</Link>
                       <div className="text-xs text-stone-500">
-                        Periode {p.periodNo}{p.isArrearsPayment ? " · pelunasan tunggakan" : ""}
+                        {p.isDeposit ? "Dana jaminan" : `Periode ${p.periodNo}`}
+                        {p.isArrearsPayment ? " · pelunasan tunggakan" : ""}
                       </div>
                     </Td>
                     <Td>
                       <b>{rupiah(p.grossAmount)}</b>
                       <div className="text-xs text-stone-500">
-                        {p.isArrearsPayment ? "tunggakan" : "iuran"}{p.penaltyAmount > 0 ? " + penalti" : ""} + admin
+                        {p.isDeposit
+                          ? "jaminan, dikembalikan di akhir"
+                          : `${p.isArrearsPayment ? "tunggakan" : "iuran"}${p.penaltyAmount > 0 ? " + penalti" : ""} + admin`}
                       </div>
                     </Td>
                     <Td>{paymentMethod(p.paymentType)}</Td>
@@ -181,7 +187,7 @@ export default function HistoryPage() {
                       {p.txHash ? (
                         <a href={etherscanTx(p.txHash)} target="_blank" rel="noreferrer" className="underline"><Mono>{shortHash(p.txHash)}</Mono></a>
                       ) : (
-                        <Mono>{p.isArrearsPayment ? "tidak dicatat" : p.chainStatus ?? "–"}</Mono>
+                        <Mono>{p.isArrearsPayment || p.isDeposit ? "tidak dicatat" : p.chainStatus ?? "–"}</Mono>
                       )}
                     </Td>
                     <Td>

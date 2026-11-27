@@ -58,7 +58,9 @@ function InvitationRow({ inv, onDone }: { inv: Invitation; onDone: () => void })
           <div className="text-xs text-stone-500">
             Diundang oleh {inv.creatorName} · {c.memberCount} anggota · iuran {rupiah(c.contributionAmount)} per{" "}
             {c.periodDays} hari · penalti {c.penaltyPct}% bila terlambat · biaya admin {rupiah(c.adminFee)}
-            {c.startDate && ` · mulai ${formatYmd(c.startDate)}`} · urutan giliran diundi saat kelompok dikunci
+            {c.startDate && ` · mulai ${formatYmd(c.startDate)}`}
+            {(c.depositAmount ?? 0) > 0 && ` · jaminan ${rupiah(c.depositAmount!)} (dikembalikan di akhir)`} · urutan giliran
+            diundi saat kelompok dikunci
           </div>
         </div>
         {!accepting && (

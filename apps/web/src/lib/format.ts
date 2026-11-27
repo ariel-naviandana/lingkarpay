@@ -73,6 +73,7 @@ export const circleStatus: Record<string, readonly [string, "green" | "amber" | 
   draft: ["Belum dimulai", "gray"],
   active: ["Berjalan", "green"],
   completed: ["Selesai", "purple"],
+  cancelled: ["Dibatalkan", "red"],
 };
 
 export const periodStatus: Record<string, string> = {

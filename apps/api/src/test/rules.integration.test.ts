@@ -1,7 +1,7 @@
 import { after, before, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
-import { boot, prepareTestDatabase, resetDb, seedCircle, type Seeded } from "./helpers.js";
+import { boot, markDepositsPaid, prepareTestDatabase, resetDb, seedCircle, type Seeded } from "./helpers.js";
 
 /**
  * Aturan bisnis: tanggal mulai, undian giliran, usulan hanya setelah jatuh tempo, tenggat digeser
@@ -85,6 +85,7 @@ async function fullDraft(startDate: string, n = 3, tag = "a") {
     await call(u, "POST", `/circles/${cid}/invitation/accept`, { payoutAccount: acct(`Anggota ${i}`) });
     others.push(u);
   }
+  await markDepositsPaid(ctx.pool, cid);
   return { owner, cid, others };
 }
 

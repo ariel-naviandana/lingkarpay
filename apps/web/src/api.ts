@@ -124,6 +124,12 @@ export const api = {
     request<{ circleId: number; declined: true }>("POST", `/circles/${circleId}/invitation/decline`),
   cancelInvitation: (circleId: number, memberId: number) =>
     request<{ cancelled: true }>("DELETE", `/circles/${circleId}/invitations/${memberId}`),
+  // Dana jaminan, pembatalan kelompok draft, dan mengeluarkan anggota draft
+  depositCheckout: (circleId: number) => request<CheckoutResult>("POST", `/circles/${circleId}/deposit/checkout`),
+  cancelCircle: (circleId: number) =>
+    request<{ circleId: number; status: "cancelled"; depositsRefunded: number }>("POST", `/circles/${circleId}/cancel`),
+  removeMember: (circleId: number, memberId: number) =>
+    request<{ removed: true }>("DELETE", `/circles/${circleId}/members/${memberId}`),
   // Pelunasan tunggakan oleh penunggaknya sendiri
   arrearsCheckout: (arrearId: number) => request<CheckoutResult>("POST", `/arrears/${arrearId}/checkout`),
   // Urutan giliran diundi server saat kelompok dikunci.

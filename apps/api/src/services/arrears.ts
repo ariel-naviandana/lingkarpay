@@ -6,6 +6,8 @@
  *   tercatat menunggak sebesar satu iuran. Kreditornya = penerima periode itu (yang menerima kurang).
  * - Penunggak boleh melunasi kapan saja lewat pembayaran susulan (iuran + penalti + biaya admin).
  * - Bila belum lunas saat gilirannya menerima, tunggakan (iuran + penalti) dipotong dari jatahnya.
+ * - Bila giliran penunggak sudah lewat (atau kelompok selesai), tunggakan ditutup dari dana jaminannya
+ *   (status covered, lihat deposits.ts).
  * - Setiap pelunasan diteruskan ke kreditor sebagai transfer simulasi ke rekening kreditor.
  *
  * Catatan chain: pelunasan susulan tidak dicatat ke contract (contract v2 hanya menerima pembayaran
@@ -178,7 +180,7 @@ export interface ArrearView {
   /** Penalti: perkiraan saat ini bila masih terbuka, atau yang dibayarkan bila sudah lunas. */
   penaltyAmount: number;
   totalDue: number;
-  status: "open" | "paid" | "deducted";
+  status: "open" | "paid" | "deducted" | "covered";
   settledAt: Date | null;
   settledPayoutPeriodNo: number | null;
   forward: {
@@ -201,7 +203,7 @@ export async function listArrears(circleId: number, now: Date = new Date()): Pro
     creditor_name: string;
     amount: number;
     penalty_amount: number;
-    status: "open" | "paid" | "deducted";
+    status: "open" | "paid" | "deducted" | "covered";
     settled_at: Date | null;
     payout_period_no: number | null;
     forward_amount: number | null;

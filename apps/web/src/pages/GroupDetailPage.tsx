@@ -4,6 +4,7 @@ import { api } from "../api";
 import { PayoutPanel, QuorumCard } from "../components/CircleActions";
 import { PayoutAccountCard } from "../components/PayoutAccountCard";
 import { ArrearsCard } from "../components/ArrearsCard";
+import { DepositCard } from "../components/DepositCard";
 import { PayoutDetail } from "../components/PayoutDetail";
 import DraftActions from "../components/DraftActions";
 import PayButton from "../components/PayButton";
@@ -154,6 +155,8 @@ export default function GroupDetailPage() {
               ? `Periode ${cp.periodNo} dari ${periods.length}`
               : circle.status === "draft"
                 ? `Belum dimulai · tanggal mulai ${formatYmd(circle.startDate)}`
+                : circle.status === "cancelled"
+                ? "Dibatalkan sebelum dimulai"
                 : "Semua periode selesai"}{" "}
             · {isCreator ? "Anda pengelola" : "Anda anggota"}
           </p>
@@ -363,6 +366,9 @@ export default function GroupDetailPage() {
                   : []),
                 ["Penalti keterlambatan", circle.penaltyPct > 0 ? `${circle.penaltyPct}% dari iuran, sekali bila terlambat` : "Tidak ada"],
                 ["Biaya admin", `${rupiah(circle.adminFee)} per pembayaran`],
+                ...((circle.depositAmount ?? 0) > 0
+                  ? ([["Dana jaminan", `${rupiah(circle.depositAmount!)} per anggota, dikembalikan di akhir`]] as const)
+                  : []),
                 [
                   "Kuorum keputusan",
                   `${Math.floor(circle.memberCount / 2) + 1} dari ${circle.memberCount} anggota`,
@@ -393,8 +399,8 @@ export default function GroupDetailPage() {
               {circle.status === "draft"
                 ? "Aturan terkunci setelah kelompok dimulai."
                 : "Aturan sudah terkunci sejak kelompok dimulai."}{" "}
-              Iuran, penalti, biaya admin, dan urutan giliran dicatat di contract; tanggal mulai dan seed undian disimpan
-              server. Urutan = anggota diurutkan menurut SHA-256(seed:ID anggota), jadi siapa pun bisa menghitung ulang.
+              Iuran, penalti, biaya admin, dan urutan giliran dicatat di contract; tanggal mulai, seed undian, dan dana
+              jaminan dicatat server. Urutan = anggota diurutkan menurut SHA-256(seed:ID anggota), jadi siapa pun bisa menghitung ulang.
               Bila periode dibuka terlambat, tenggatnya di aplikasi digeser agar anggota tetap mendapat {circle.periodDays} hari.
             </p>
           </Card>
@@ -441,7 +447,13 @@ export default function GroupDetailPage() {
             </div>
           </Card>
 
-          <ArrearsCard arrears={detail.arrears ?? []} me={me} onChanged={reload} />
+          <ArrearsCard
+            arrears={detail.arrears ?? []}
+            me={me}
+            myTurnPassed={periods.some((p: Period) => p.recipientMemberId === me?.memberId && p.status === "done")}
+            onChanged={reload}
+          />
+          <DepositCard detail={detail} onChanged={reload} />
           {me && <PayoutAccountCard key={me.payoutAccount?.updatedAt ?? "none"} circleId={circle.id} me={me} onChanged={reload} />}
           <PayoutPanel detail={detail} payments={history.payments} onChanged={reload} />
           {history.payouts.length > 0 && (
@@ -457,7 +469,9 @@ export default function GroupDetailPage() {
               ))}
             </Card>
           )}
-          <QuorumCard detail={detail} proposal={proposal} onChanged={reload} />
+          {circle.status !== "draft" && circle.status !== "cancelled" && (
+            <QuorumCard detail={detail} proposal={proposal} onChanged={reload} />
+          )}
         </div>
       </div>
     </div>

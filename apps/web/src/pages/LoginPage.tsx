@@ -5,9 +5,9 @@ import { useAuth } from "../context/useAuth";
 
 export default function LoginPage() {
   const [tab, setTab] = useState<"login" | "register">("login");
-  const [name, setName] = useState("Dimas Prakoso");
-  const [email, setEmail] = useState("dimas@contoh.id");
-  const [password, setPassword] = useState("rahasia1234");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const { user, login, register } = useAuth();
@@ -118,6 +118,8 @@ export default function LoginPage() {
                 type="email"
                 required
                 value={email}
+                autoComplete="email"
+                placeholder="nama@email.com"
                 onChange={(e) => setEmail(e.target.value)}
               />
             </Field>
@@ -130,6 +132,7 @@ export default function LoginPage() {
                 required
                 minLength={tab === "register" ? 8 : 1}
                 value={password}
+                autoComplete={tab === "register" ? "new-password" : "current-password"}
                 onChange={(e) => setPassword(e.target.value)}
               />
             </Field>
@@ -142,9 +145,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <p className="text-center text-xs sm:text-sm text-stone-500">
-            Lupa kata sandi? <a className="font-semibold text-brand underline" href="#">Atur ulang</a>
-          </p>
           <p className="text-center text-xs sm:text-sm text-stone-500">
             Hanya ingin memeriksa sebuah kelompok?{" "}
             <Link className="font-semibold text-brand underline" to="/verifikasi/1">

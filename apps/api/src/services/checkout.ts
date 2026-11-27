@@ -16,10 +16,17 @@ interface CheckoutContext {
   contribution_amount: number;
   penalty_pct: number;
   admin_fee: number;
-  period_id: number;
-  period_no: number;
-  period_status: string;
-  due_date: Date;
+  /** null untuk setoran jaminan (tidak terikat periode). */
+  period_id: number | null;
+  period_no: number | null;
+  period_status: string | null;
+  due_date: Date | null;
+}
+
+/** Setoran jaminan: jumlah tetap, tanpa penalti dan tanpa biaya admin (dana dikembalikan di akhir). */
+interface DepositBill {
+  kind: "deposit";
+  amount: number;
 }
 
 interface OrderRow {
@@ -63,10 +70,11 @@ const toResult = (o: OrderRow, reused: boolean): CheckoutResult => ({
 const ORDER_COLUMNS =
   "id, order_id, status, amount, penalty_amount, admin_fee, gross_amount, snap_token, expires_at";
 
-async function findActiveOrder(memberId: number, periodId: number): Promise<OrderRow | null> {
+async function findActiveOrder(memberId: number, periodId: number | null): Promise<OrderRow | null> {
+  // periodId null = order setoran jaminan anggota ini.
   const { rows } = await pool.query<OrderRow>(
     `SELECT ${ORDER_COLUMNS} FROM orders
-      WHERE member_id = $1 AND period_id = $2 AND status = ANY($3::text[])`,
+      WHERE member_id = $1 AND period_id IS NOT DISTINCT FROM $2::int AND status = ANY($3::text[])`,
     [memberId, periodId, ACTIVE_STATUSES],
   );
   return rows[0] ?? null;
@@ -92,7 +100,7 @@ async function waitForToken(orderPk: number, timeoutMs: number): Promise<OrderRo
  * Order aktif milik anggota di periode ini. Bila masih PENDING tanpa token, berarti permintaan
  * lain sedang membuatnya: tunggu, jangan ditutup (menutupnya akan membuat pembayaran sah ditolak).
  */
-async function resolveExisting(memberId: number, periodId: number): Promise<OrderRow | null> {
+async function resolveExisting(memberId: number, periodId: number | null): Promise<OrderRow | null> {
   const found = await findActiveOrder(memberId, periodId);
   if (found && found.status === "PENDING" && !found.snap_token) {
     const waited = await waitForToken(found.id, 10_000);
@@ -182,12 +190,39 @@ export async function createArrearsCheckout(user: AuthUser, arrearId: number): P
   return issueOrder(ctx);
 }
 
+/**
+ * Setoran dana jaminan oleh anggota sendiri, saat kelompok masih draft. Jaminan = satu iuran + penalti
+ * keterlambatan, cukup untuk menutup satu tunggakan. Tanpa biaya admin karena dikembalikan di akhir.
+ */
+export async function createDepositCheckout(user: AuthUser, circleId: number): Promise<CheckoutResult> {
+  const { rows } = await pool.query<CheckoutContext & { deposit_amount: number; has_deposit: boolean }>(
+    `SELECT m.id AS member_id, m.user_id, u.name AS user_name, u.email AS user_email,
+            c.id AS circle_id, c.status AS circle_status,
+            c.contribution_amount, c.penalty_pct, c.admin_fee, c.deposit_amount,
+            NULL::int AS period_id, NULL::int AS period_no, NULL::text AS period_status, NULL::timestamptz AS due_date,
+            EXISTS (SELECT 1 FROM deposits d WHERE d.member_id = m.id) AS has_deposit
+       FROM members m
+       JOIN users u   ON u.id = m.user_id
+       JOIN circles c ON c.id = m.circle_id
+      WHERE c.id = $1 AND m.user_id = $2 AND m.status = 'active'`,
+    [circleId, user.id],
+  );
+  const ctx = rows[0];
+  if (!ctx) throw forbidden("Kamu bukan anggota kelompok ini");
+  if (Number(ctx.deposit_amount) <= 0) throw conflict("DEPOSIT_NOT_REQUIRED", "Kelompok ini tidak memakai dana jaminan");
+  if (ctx.circle_status !== "draft") {
+    throw conflict("CIRCLE_STARTED", "Jaminan disetor sebelum kelompok dikunci");
+  }
+  if (ctx.has_deposit) throw conflict("ALREADY_PAID", "Dana jaminan Anda sudah disetor");
+  return issueOrder(ctx, { kind: "deposit", amount: Number(ctx.deposit_amount) });
+}
+
 /** Membuat (atau memakai ulang) order untuk anggota dan periode pada ctx, lalu token Snap. */
-async function issueOrder(ctx: CheckoutContext): Promise<CheckoutResult> {
+async function issueOrder(ctx: CheckoutContext, deposit?: DepositBill): Promise<CheckoutResult> {
   const existing = await resolveExisting(ctx.member_id, ctx.period_id);
   if (existing) {
     if (isPaid(existing.status)) {
-      throw conflict("ALREADY_PAID", "Iuran periode ini sudah dibayar");
+      throw conflict("ALREADY_PAID", deposit ? "Dana jaminan Anda sudah disetor" : "Iuran periode ini sudah dibayar");
     }
     const stillValid = existing.snap_token !== null && existing.expires_at.getTime() > Date.now();
     if (stillValid) return toResult(existing, true);
@@ -204,26 +239,28 @@ async function issueOrder(ctx: CheckoutContext): Promise<CheckoutResult> {
     if (closed.outcome === "rejected") {
       // Status berubah di tengah jalan (mis. baru dibayar). Cek ulang.
       const now = await findActiveOrder(ctx.member_id, ctx.period_id);
-      if (now && isPaid(now.status)) throw conflict("ALREADY_PAID", "Iuran periode ini sudah dibayar");
+      if (now && isPaid(now.status)) throw conflict("ALREADY_PAID", "Pembayaran ini sudah lunas");
       if (now) return toResult(now, true);
     }
   }
 
-  const bill = computeBill({
-    contributionAmount: ctx.contribution_amount,
-    penaltyPct: ctx.penalty_pct,
-    adminFee: ctx.admin_fee,
-    dueDate: ctx.due_date,
-  });
+  const bill = deposit
+    ? { amount: deposit.amount, penaltyAmount: 0, adminFee: 0, grossAmount: deposit.amount, overdue: false }
+    : computeBill({
+        contributionAmount: ctx.contribution_amount,
+        penaltyPct: ctx.penalty_pct,
+        adminFee: ctx.admin_fee,
+        dueDate: ctx.due_date!,
+      });
 
   const attemptRow = await pool.query<{ n: number }>(
-    "SELECT count(*)::int AS n FROM orders WHERE member_id = $1 AND period_id = $2",
+    "SELECT count(*)::int AS n FROM orders WHERE member_id = $1 AND period_id IS NOT DISTINCT FROM $2::int",
     [ctx.member_id, ctx.period_id],
   );
   const attempt = attemptRow.rows[0]!.n + 1;
-  // order_id Midtrans: unik dan maksimal 50 karakter.
-  const orderId = `LP-${ctx.circle_id}-${ctx.period_no}-${ctx.member_id}-${Date.now().toString(36)}`;
-  const idempotencyKey = `${ctx.circle_id}:${ctx.period_id}:${ctx.member_id}#${attempt}`;
+  // order_id Midtrans: unik dan maksimal 50 karakter. "J" = setoran jaminan.
+  const orderId = `LP-${ctx.circle_id}-${deposit ? "J" : ctx.period_no}-${ctx.member_id}-${Date.now().toString(36)}`;
+  const idempotencyKey = `${ctx.circle_id}:${deposit ? "deposit" : ctx.period_id}:${ctx.member_id}#${attempt}`;
   const expiresAt = new Date(Date.now() + config.ORDER_EXPIRY_MINUTES * 60_000);
 
   let orderPk: number;
@@ -231,8 +268,8 @@ async function issueOrder(ctx: CheckoutContext): Promise<CheckoutResult> {
     const ins = await pool.query<{ id: number }>(
       `INSERT INTO orders
          (order_id, member_id, period_id, amount, penalty_amount, admin_fee, gross_amount,
-          idempotency_key, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+          idempotency_key, expires_at, kind)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
       [
         orderId,
         ctx.member_id,
@@ -243,6 +280,7 @@ async function issueOrder(ctx: CheckoutContext): Promise<CheckoutResult> {
         bill.grossAmount,
         idempotencyKey,
         expiresAt,
+        deposit ? "deposit" : "contribution",
       ],
     );
     orderPk = ins.rows[0]!.id;
@@ -262,7 +300,7 @@ async function issueOrder(ctx: CheckoutContext): Promise<CheckoutResult> {
     const snap = await createSnapTransaction({
       orderId,
       grossAmount: bill.grossAmount,
-      items: billItems(bill),
+      items: deposit ? [{ id: "jaminan", name: "Dana jaminan arisan", price: bill.amount, quantity: 1 }] : billItems(bill),
       customer: { firstName: ctx.user_name, email: ctx.user_email },
       expiryMinutes: config.ORDER_EXPIRY_MINUTES,
       enabledPayments: ENABLED_PAYMENTS,

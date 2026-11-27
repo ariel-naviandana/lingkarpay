@@ -31,9 +31,11 @@ interface Props {
   /** Checkout lain (mis. pelunasan tunggakan). Bawaan: iuran periode berjalan. */
   startCheckout?: () => Promise<CheckoutResult>;
   label?: string;
+  /** Pesan saat lunas, untuk pembayaran yang tidak dicatat ke blockchain (jaminan, tunggakan). */
+  paidMessage?: string;
 }
 
-export default function PayButton({ circleId, periodId, memberId, onPaid, startCheckout, label }: Props) {
+export default function PayButton({ circleId, periodId, memberId, onPaid, startCheckout, label, paidMessage }: Props) {
   const [state, setState] = useState<"idle" | "loading" | "waiting" | "paid" | "failed" | "error">("idle");
   const [message, setMessage] = useState("");
   const cancelled = useRef(false);
@@ -45,7 +47,9 @@ export default function PayButton({ circleId, periodId, memberId, onPaid, startC
       const status: OrderStatus = o.status;
       if (PAID_STATUSES.includes(status)) {
         setState("paid");
-        setMessage(status === "ANCHORED" ? "Lunas dan tercatat di blockchain." : "Lunas. Menunggu pencatatan di blockchain.");
+        setMessage(
+          paidMessage ?? (status === "ANCHORED" ? "Lunas dan tercatat di blockchain." : "Lunas. Menunggu pencatatan di blockchain."),
+        );
         onPaid?.();
         return;
       }

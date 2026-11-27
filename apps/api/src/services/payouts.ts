@@ -5,6 +5,7 @@ import { keccakHex } from "../lib/hash.js";
 import type { AuthUser } from "./auth.js";
 import { assertChainAllowsPayout } from "./chainGuard.js";
 import { destinationView } from "./payoutAccount.js";
+import { coverArrearsFromDeposits, refundDeposits } from "./deposits.js";
 import { applyArrearsDeduction, IS_ARREARS_ORDER, planArrearsDeduction } from "./arrears.js";
 import { approveIrisPayout, createIrisPayout, irisAvailable, type IrisBeneficiary } from "./iris.js";
 import { enqueueMarkPayout, type MarkPayoutPayload } from "./outbox.js";
@@ -80,6 +81,14 @@ async function completePeriod(client: PoolClient, ctx: PeriodContext): Promise<v
   );
   if (!next.rowCount) {
     await client.query("UPDATE circles SET status = 'completed' WHERE id = $1", [ctx.circle_id]);
+    // Kelompok selesai: tunggakan yang masih terbuka ditutup dari jaminan penunggak, lalu sisa jaminan
+    // semua anggota dikembalikan ke rekening masing-masing.
+    await coverArrearsFromDeposits(client, ctx.circle_id, { all: true });
+    await refundDeposits(client, ctx.circle_id);
+  } else {
+    // Penerima periode ini sudah menerima jatahnya: tunggakannya yang masih terbuka tidak bisa lagi
+    // dipotong dari jatah, jadi ditutup dari jaminannya.
+    await coverArrearsFromDeposits(client, ctx.circle_id, { all: false });
   }
 }
 
@@ -129,7 +138,7 @@ const simulatedTransferRef = (circleId: number, periodNo: number, at: Date) =>
  * LingkarPay dan tidak ikut dicairkan.
  *
  * mode "simulated": hanya mencatat (sandbox). mode "iris": memakai Midtrans Iris sandbox.
- * Hanya pembuat kelompok (operator) yang boleh memicu, dan hanya saat periode "ready_payout".
+ * Dipicu pembuat kelompok atau penerima giliran (Iris: pembuat saja), hanya saat periode "ready_payout".
  */
 export async function createPayout(
   user: AuthUser,
@@ -150,6 +159,10 @@ export async function createPayout(
     // Pembuat atau penerima giliran itu sendiri (agar dana tidak tertahan bila pembuat tidak aktif).
     if (ctx.circle_created_by !== user.id && ctx.recipient_user_id !== user.id) {
       throw forbidden("Hanya pembuat kelompok atau penerima giliran yang bisa mencairkan");
+    }
+    // Mode Iris memakai data rekening dari permintaan, jadi hanya pembuat (operator) yang boleh.
+    if (input.mode === "iris" && ctx.circle_created_by !== user.id) {
+      throw forbidden("Pencairan lewat Iris hanya oleh pembuat kelompok");
     }
     if (ctx.recipient_member_id === null || ctx.recipient_ref === null) {
       throw conflict("NO_RECIPIENT", "Periode belum punya penerima");

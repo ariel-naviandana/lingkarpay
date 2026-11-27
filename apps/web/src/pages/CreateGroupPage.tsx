@@ -40,6 +40,8 @@ export default function CreateGroupPage() {
   };
 
   const periodDays = f.periodType === "Mingguan" ? 7 : 30;
+  // Sama dengan server: jaminan = iuran + penalti keterlambatan (dibulatkan ke atas).
+  const deposit = f.fee + Math.floor((f.fee * f.late + 99) / 100);
   const channelLabel = PAYOUT_CHANNELS.find((c) => c.code === account.channel)?.label ?? account.channel;
   const digits = account.accountNumber.replace(/[\s-]/g, "");
 
@@ -112,6 +114,7 @@ export default function CreateGroupPage() {
     ["Urutan giliran", "Diundi acak oleh sistem saat kelompok dikunci"],
     ["Penalti keterlambatan", f.late > 0 ? `${f.late}% dari iuran, sekali bila lewat tenggat` : "Tidak ada"],
     ["Biaya admin per pembayaran", adminFee !== null ? `${rupiah(adminFee)} (ditetapkan aplikasi)` : "–"],
+    ["Dana jaminan per anggota", `${rupiah(deposit)} (iuran + penalti, dikembalikan di akhir)`],
     ["Kuorum keputusan", `${Math.floor(f.members / 2) + 1} dari ${f.members} anggota`],
     ["Rekening pencairan Anda", digits ? accountLabel({ channelLabel, last4: digits.slice(-4), accountName: account.accountName }) : "–"],
   ];
@@ -204,7 +207,9 @@ export default function CreateGroupPage() {
               <div className="rounded-xl border border-sand bg-cream/60 p-3 text-xs sm:text-sm text-stone-600">
                 Biaya admin per pembayaran:{" "}
                 <b className="text-ink">{adminFee !== null ? rupiah(adminFee) : "–"}</b>, ditetapkan aplikasi (pendapatan
-                platform, tidak ikut dicairkan). Kuorum keputusan darurat: mayoritas mutlak ({Math.floor(f.members / 2) + 1} dari {f.members}).
+                platform, tidak ikut dicairkan). Dana jaminan per anggota: <b className="text-ink">{rupiah(deposit)}</b> (satu
+                iuran + penalti), disetor sebelum kelompok dikunci dan dikembalikan saat selesai. Kuorum keputusan darurat:
+                mayoritas mutlak ({Math.floor(f.members / 2) + 1} dari {f.members}).
               </div>
             </>
           )}
@@ -237,7 +242,8 @@ export default function CreateGroupPage() {
           {step === 2 && (
             <div className="space-y-4">
               <p className="text-xs sm:text-sm text-stone-600">
-                Kelompok berstatus <b>Draft</b> sampai semua undangan diterima dan tanggal mulai tiba. Saat Anda menguncinya,
+                Kelompok berstatus <b>Draft</b> sampai semua undangan diterima, semua anggota menyetor jaminan, dan tanggal
+                mulai tiba. Saat Anda menguncinya,
                 sistem mengundi urutan giliran secara acak (seed undian ditampilkan agar bisa diperiksa ulang), lalu aturan
                 dan urutan dicatat di smart contract dan tidak bisa diubah.
               </p>
@@ -283,6 +289,7 @@ export default function CreateGroupPage() {
             ["Tanggal mulai", formatYmd(f.startDate)],
             ["Durasi kelompok", `${f.members} periode (${f.members * periodDays} hari)`],
             ["Biaya admin per pembayaran", adminFee !== null ? rupiah(adminFee) : "–"],
+            ["Dana jaminan per anggota", rupiah(deposit)],
             ["Status awal", "Draft (menunggu anggota)"],
           ].map(([a, b]) => (
             <div key={a} className="flex justify-between border-t border-sand pt-3 text-xs sm:text-sm">

@@ -104,7 +104,7 @@ export async function handleNotification(
     const eventId = ev.rows[0]?.id;
     if (eventId === undefined) return { httpStatus: 200, outcome: "duplicate" };
 
-    const found = await client.query<{ id: number; gross_amount: number; period_id: number }>(
+    const found = await client.query<{ id: number; gross_amount: number; period_id: number | null }>(
       "SELECT id, gross_amount, period_id FROM orders WHERE order_id = $1",
       [orderId],
     );

@@ -4,6 +4,7 @@ import { requireUser } from "../lib/auth.js";
 import {
   acceptInvitation,
   addMemberByEmail,
+  cancelCircle,
   cancelInvitation,
   circlePayments,
   createCircle,
@@ -13,6 +14,7 @@ import {
   listCircles,
   listInvitations,
   listPeriods,
+  removeDraftMember,
   startCircle,
 } from "../services/circles.js";
 import { PAYOUT_CHANNEL_CODES, setPayoutAccount } from "../services/payoutAccount.js";
@@ -89,6 +91,20 @@ export async function circleRoutes(app: FastifyInstance) {
     const user = await requireUser(req);
     const { id, memberId } = inviteParams.parse(req.params);
     return cancelInvitation(user.id, id, memberId);
+  });
+
+  // Pembuat mengeluarkan anggota kelompok draft yang belum menyetor jaminan.
+  app.delete("/circles/:id/members/:memberId", async (req) => {
+    const user = await requireUser(req);
+    const { id, memberId } = inviteParams.parse(req.params);
+    return removeDraftMember(user.id, id, memberId);
+  });
+
+  // Pembuat membatalkan kelompok draft; jaminan yang sudah disetor dikembalikan.
+  app.post("/circles/:id/cancel", async (req) => {
+    const user = await requireUser(req);
+    const { id } = idParams.parse(req.params);
+    return cancelCircle(user.id, id);
   });
 
   app.post("/circles/:id/members", async (req, reply) => {

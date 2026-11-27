@@ -4,7 +4,7 @@ import { Badge, Button, Card, ErrorBox, Input, Loading, Mono } from "../componen
 import { useAuth } from "../context/useAuth";
 import { useAsync } from "../hooks/useAsync";
 import { api } from "../api";
-import { rupiah, circleStatus } from "../lib/format";
+import { formatYmd, rupiah, circleStatus } from "../lib/format";
 import type { MemberView } from "../types";
 
 // Contract v2 di Sepolia (publik, terverifikasi). Bisa diganti lewat VITE_CONTRACT_ADDRESS.
@@ -12,6 +12,41 @@ const CONTRACT_ADDRESS =
   (import.meta.env.VITE_CONTRACT_ADDRESS as string | undefined) ??
   "0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2";
 const ETHERSCAN = `https://sepolia.etherscan.io/address/${CONTRACT_ADDRESS}`;
+
+async function sha256Hex(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Hitung ulang undian di browser: anggota diurutkan menurut SHA-256(seed:ID anggota), sama seperti server. */
+async function recomputeDraw(seed: string, refs: string[]): Promise<string[]> {
+  const hashed = await Promise.all(refs.map(async (r) => ({ r, h: await sha256Hex(`${seed}:${r}`) })));
+  return hashed.sort((a, b) => (a.h < b.h ? -1 : a.h > b.h ? 1 : 0)).map((x) => x.r);
+}
+
+function DrawCheck({ seed, members }: { seed: string; members: MemberView[] }) {
+  const ordered = [...members].filter((m) => m.turnOrder != null).sort((a, b) => a.turnOrder! - b.turnOrder!);
+  const refs = ordered.map((m) => m.memberRef);
+  const key = `${seed}|${refs.join(",")}`;
+  const { data: expected, error } = useAsync(() => recomputeDraw(seed, [...refs].sort()), [key]);
+  const match = !!expected && expected.length === refs.length && expected.every((r, i) => r === refs[i]);
+  return (
+    <div className="mt-3 space-y-2 border-t border-sand pt-3">
+      <div className="flex items-center justify-between gap-2">
+        <b className="text-xs sm:text-sm">Undian urutan giliran</b>
+        {expected && <Badge tone={match ? "green" : "red"}>{match ? "Cocok" : "Tidak cocok"}</Badge>}
+      </div>
+      <p className="break-all text-xs text-stone-500">
+        Seed: <span className="font-mono text-[11px] text-ink">{seed}</span>
+      </p>
+      <p className="text-xs text-stone-500">
+        Browser Anda menghitung ulang SHA-256(seed:ID anggota) dan mengurutkannya.
+        {expected && ` Hasil: ${expected.join(" → ")}.`}
+        {error && " Browser tidak mendukung Web Crypto, hitung manual dengan sha256sum."}
+      </p>
+    </div>
+  );
+}
 
 type Tone = "green" | "amber" | "gray" | "purple" | "red";
 
@@ -149,6 +184,7 @@ export default function VerifyPage() {
                 ["Periode", `${circle.periodDays} hari`],
                 ["Penalti", circle.penaltyPct > 0 ? `${circle.penaltyPct}% sekali bila terlambat` : "Tidak ada"],
                 ["Status", circleStatus[circle.status]?.[0] ?? circle.status],
+                ["Tanggal mulai", formatYmd(circle.startDate)],
               ].map(([a, b]) => (
                 <div key={a} className="flex justify-between text-xs sm:text-sm">
                   <span className="text-stone-500">{a}</span>
@@ -161,6 +197,7 @@ export default function VerifyPage() {
                   {" "}{anchoredCount} sudah tercatat di chain.
                 </p>
               )}
+              {circle.drawSeed && members.length > 0 && <DrawCheck seed={circle.drawSeed} members={members} />}
             </Card>
 
             <Card className="overflow-x-auto">

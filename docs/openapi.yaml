@@ -133,7 +133,7 @@ paths:
                 memberCount: { type: integer, minimum: 2, maximum: 50 }
                 periodDays: { type: integer, minimum: 1, maximum: 365 }
                 penaltyPct: { type: integer, minimum: 0, maximum: 100, default: 0, description: "persen iuran, sekali bila terlambat" }
-                startDate: { type: string, format: date, example: "2026-12-01", description: "Tanggal mulai (WIB), tidak boleh sebelum hari ini; tanpa batas maksimum" }
+                startDate: { type: string, format: date, example: "2026-12-01", description: "Tanggal mulai (WIB), tidak boleh sebelum hari ini, paling lambat satu tahun ke depan" }
                 payoutAccount: { type: object, required: [channel, accountNumber, accountName], properties: { channel: { type: string, enum: [BCA, BNI, BRI, MANDIRI, BSI, CIMB, PERMATA, GOPAY, OVO, DANA, SHOPEEPAY] }, accountNumber: { type: string }, accountName: { type: string } } }
       responses:
         "201":
@@ -232,7 +232,42 @@ paths:
                   circle: { $ref: "#/components/schemas/Circle" }
                   periods: { type: array, items: { $ref: "#/components/schemas/Period" } }
         "400": { $ref: "#/components/responses/Error" }
-        "409": { description: "CIRCLE_NOT_FULL, CIRCLE_STARTED, INVITES_PENDING, atau START_DATE_NOT_REACHED", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: "CIRCLE_NOT_FULL, CIRCLE_STARTED, INVITES_PENDING, START_DATE_NOT_REACHED, atau DEPOSITS_PENDING", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /circles/{id}/deposit/checkout:
+    post:
+      tags: [Pembayaran]
+      summary: Setoran dana jaminan anggota (kelompok draft). Jumlah = circle.depositAmount, tanpa biaya admin; respons sama dengan /checkout.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/CircleId" }]
+      responses:
+        "200": { description: Memakai ulang order PENDING }
+        "201": { description: Order jaminan baru }
+        "409": { description: "ALREADY_PAID, CIRCLE_STARTED, atau DEPOSIT_NOT_REQUIRED", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /circles/{id}/cancel:
+    post:
+      tags: [Kelompok]
+      summary: Batalkan kelompok draft (pembuat). Undangan gugur dan jaminan yang sudah disetor dikembalikan.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/CircleId" }]
+      responses:
+        "200": { description: "{ circleId, status: cancelled, depositsRefunded }" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { description: CIRCLE_STARTED, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /circles/{id}/members/{memberId}:
+    delete:
+      tags: [Kelompok]
+      summary: Keluarkan anggota kelompok draft yang belum menyetor jaminan (pembuat)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/CircleId" }
+        - { name: memberId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: "{ circleId, memberId, removed: true }" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { description: "MEMBER_HAS_DEPOSIT, CANNOT_REMOVE_SELF, atau CIRCLE_STARTED", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /circles/{id}/periods:
     get:
@@ -642,7 +677,8 @@ components:
         periodDays: { type: integer }
         penaltyPct: { type: integer }
         adminFee: { type: integer }
-        status: { type: string, enum: [draft, active, completed] }
+        status: { type: string, enum: [draft, active, completed, cancelled] }
+        depositAmount: { type: integer, description: "Dana jaminan per anggota (iuran + penalti); 0 = kelompok lama" }
         chainCircleId: { type: string, nullable: true, description: "null sampai kelompok dicatat di chain" }
         createdBy: { type: integer }
         startDate: { type: string, format: date, description: "Tanggal mulai rencana (WIB)" }

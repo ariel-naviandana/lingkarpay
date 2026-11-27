@@ -55,6 +55,13 @@ Worker chain dijalankan terhadap node Hardhat lokal bersama backend dan Midtrans
 - **Verifikasi kode contract** di Etherscan, Blockscout, dan Sourcify berhasil (Exact Match). Hambatan: `hardhat verify` awalnya gagal (`bytecode does not match`) karena Ignition men-deploy dengan profil build `production` (optimizer aktif) sedangkan build lokal memakai `default`; diselesaikan dengan `hardhat build --build-profile production` sebelum `verify`.
 - **Keamanan.** Server Key dan Signature Secret Key Midtrans sempat tertempel di percakapan dengan AI; keduanya sudah di-rotate. Aturan baru di `RULES.md`: jangan menempelkan isi `.env`.
 
+## 2026-11-24 sampai 28 — Peran admin, keamanan, dan aturan bisnis
+- **Peran admin sungguhan** (`a648cbb`): kolom `users.role`, `admin:grant`, konsol operator khusus admin; rincian pencairan.
+- **Audit keamanan dan blockchain** (`81964ab`): batas laju login, header keamanan, gerbang contract sebelum pencairan; celah blockchain dan solusinya di `KEAMANAN.md`.
+- **Celah bisnis yang ditemukan dan diputuskan pengembang** (`81964ab`): biaya admin bisa diatur pembuat (sekarang ditetapkan aplikasi); anggota masuk tanpa persetujuan (sekarang undangan terima/tolak dengan rekening wajib); rekening kosong saat giliran tiba (sekarang wajib sejak bergabung); iuran tidak genap saat ada yang tidak bayar (sekarang tunggakan); pembuat memilih urutan giliran (sekarang undian dengan seed terbuka); kuorum bisa menutup sebelum jatuh tempo (sekarang ditolak); tenggat bisa lewat sebelum periode dibuka (sekarang digeser); hanya pembuat yang bisa mencairkan (sekarang juga penerima); penunggak bebas ikut kelompok lain (sekarang diblokir); penalti tiruan di halaman bayar (sekarang dari server).
+- **Gagal bayar setelah menerima giliran** (commit 28 Nov): diputuskan memakai dana jaminan (iuran + penalti per anggota), dikembalikan di akhir; kelompok draft bisa dibatalkan.
+- Ringkasan kondisi aplikasi untuk laporan: `ATURAN_BISNIS.md`.
+
 ## Template entri
 ```
 ## YYYY-MM-DD — <jalur>

@@ -15,9 +15,9 @@ Pembagian orang per jalur: lihat Tabel 25 di proposal. Antarmuka antar jalur dit
 ## Status
 | Jalur | Status |
 |---|---|
-| Payment gateway (`apps/api`) | Selesai dan terverifikasi: 146 tes, smoke test (alur penuh dan kuorum), skenario Midtrans sandbox. Rincian: `docs/PLAN.md` |
+| Payment gateway (`apps/api`) | Selesai dan terverifikasi: 151 tes, smoke test (alur penuh dan kuorum), skenario Midtrans sandbox. Rincian: `docs/PLAN.md` |
 | Smart contract (`contracts/`, `apps/api/src/chain/`) | Selesai: contract lengkap termasuk kuorum (40 tes), ter-deploy di Sepolia (v2), worker chain idempoten; terbukti end to end dengan hash transaksi (`docs/BUKTI_SEPOLIA.md`) |
-| Frontend (`apps/web/`) | Berjalan dan terhubung ke API: masuk/daftar, dashboard, buat kelompok, detail kelompok (bayar, kuorum, pencairan dengan rincian), riwayat, konsol operator (khusus admin), dan portal verifikasi publik. `npm run build` lulus |
+| Frontend (`apps/web/`) | Berjalan dan terhubung ke API: masuk/daftar, dashboard (undangan, tagihan), buat kelompok, detail kelompok (undangan, dana jaminan, bayar, kuorum, tunggakan, pencairan dengan rincian), riwayat, konsol operator (khusus admin), dan portal verifikasi publik (termasuk pemeriksaan undian). `npm run build` lulus. Aturan bisnis lengkap: `docs/ATURAN_BISNIS.md` |
 | Business case (`docs/business-case/`) | Dikerjakan anggota lain; di repo tersedia daftar isi dan angka prototipe (`docs/business-case/README.md`) |
 
 ## Struktur
@@ -35,6 +35,7 @@ lingkarpay/
 ├── contracts/                 jalur smart contract (Hardhat: contract, tes, deploy Sepolia)
 │   └── deployments/           alamat dan ABI hasil deploy Sepolia
 └── docs/
+    ├── ATURAN_BISNIS.md       kondisi aplikasi sekarang: aturan bisnis, peran, alur uang (rujukan laporan)
     ├── DESIGN.md              rancangan antarmuka v1 (kontrak antar jalur)
     ├── API.md, openapi.yaml   endpoint backend (teks dan OpenAPI)
     ├── ERD.md                 skema database

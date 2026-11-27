@@ -15,11 +15,14 @@ Untuk presentasi dan tanya jawab. Dokumen ini jujur tentang batas prototipe: apa
 | Tunggakan (baru) | Anggota yang tidak membayar saat periode ditutup kuorum tercatat menunggak; tunggakan dilunasi sendiri atau dipotong dari jatahnya saat giliran, lalu diteruskan ke penerima yang kurang. Mencegah penunggak menerima iuran penuh orang lain tanpa membayar | `src/test/arrears.integration.test.ts` |
 | Undangan dan rekening (baru) | Anggota baru bergabung hanya dengan menerima undangan dan mengisi rekening; biaya admin ditetapkan aplikasi, bukan pembuat | `src/test/invitations.integration.test.ts` |
 | Aturan bisnis (baru) | Urutan giliran diundi server (seed dibuka, bisa dihitung ulang), bukan dipilih pembuat; kelompok baru bisa dikunci pada tanggal mulai; usulan tutup periode hanya setelah jatuh tempo; tenggat periode yang dibuka terlambat digeser; pencairan oleh pembuat atau penerima; penunggak tidak bisa membuat atau bergabung ke kelompok baru sampai lunas | `src/test/rules.integration.test.ts` |
+| Dana jaminan (baru) | Setiap anggota menyetor jaminan (iuran + penalti) sebelum kelompok dikunci. Anggota yang berhenti bayar setelah menerima giliran tidak lagi merugikan penerima berikutnya: tunggakannya ditutup dari jaminan. Sisa jaminan dikembalikan saat selesai atau dibatalkan | `src/test/deposits.integration.test.ts` |
 | Gerbang contract sebelum pencairan (baru) | Backend membaca status periode dan penerima langsung dari contract; pencairan ditolak (`CHAIN_NOT_READY`, `CHAIN_RECIPIENT_MISMATCH`) bila contract belum menyatakan siap cair atau penerimanya berbeda. Contract menjadi penentu sebelum dana bergerak | `src/test/chainGuard.integration.test.ts` |
 | Contract | Semua fungsi tulis `onlyOperator` (kecuali `applyPenalty` yang hanya bisa setelah jatuh tempo), validasi status, tanpa catatan ganda, kuorum | 40 tes contract |
 | Privasi on-chain | Hanya ID samaran (`m_xxxxxxxx`) dan hash; tanpa nama, email, atau rekening | `npm run inspect` |
 
 Catatan aturan bisnis: seed undian dibuat server, jadi undian dapat diperiksa ulang tetapi tetap mempercayai server (versi lanjutan: Chainlink VRF atau blockhash di contract v3). Tenggat on-chain tetap `startTime + periodNo × periodDays`; bila periode dibuka terlambat, tenggat di aplikasi (dan penalti off-chain) bisa lebih longgar daripada tanda `late` di contract.
+
+Catatan jaminan: jaminan menutup satu tunggakan per anggota. Anggota yang menunggak lebih dari sekali setelah gilirannya tetap meninggalkan tunggakan terbuka (ditambah sanksi blokir). Jaminan dicatat off-chain; contract v3 bisa menahan jaminan sebagai escrow.
 
 Catatan batas laju: hitungan disimpan di memori satu proses server. Di balik tunnel atau proxy, semua permintaan tampak dari satu IP, sehingga batas per IP + email yang paling berperan. Untuk beberapa instance server di produksi, hitungan dipindah ke penyimpanan bersama (misalnya Redis).
 

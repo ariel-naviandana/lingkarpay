@@ -15,11 +15,14 @@ Belum dimulai. Dikumpulkan 24 November (PDF). Isi yang diminta tugas:
 - Revisi proposal sesuai catatan dosen
 - Slide dan video demo
 
-## Angka dari prototipe yang bisa dipakai
-Nilai ini dari implementasi saat ini dan dapat jadi dasar perhitungan (ubah di `circles.admin_fee` / `DEFAULT_ADMIN_FEE`):
-- Biaya admin per iuran di prototipe: Rp1.000 (asumsi, belum divalidasi ke pengguna).
-- Dana pencairan = iuran + penalti; biaya admin tidak ikut dicairkan (pendapatan LingkarPay).
-- Penalti keterlambatan: persentase tetap dari iuran, dibulatkan ke atas.
-- Biaya Midtrans (MDR per kanal) dan biaya gas Sepolia belum diperhitungkan di kode; ambil dari tarif resmi saat menyusun unit economics.
+## Angka dari prototipe
+Rujukan lengkap dan terbaru: **`docs/ATURAN_BISNIS.md`** (peran, siklus, alur uang, angka di bagian 6, mitigasi risiko, batasan). Ringkasnya:
+- Biaya admin per pembayaran iuran atau pelunasan tunggakan: Rp1.000, **ditetapkan platform** (pembuat kelompok tidak bisa mengubah). Asumsi, belum divalidasi ke pengguna (`DEFAULT_ADMIN_FEE`).
+- Dana jaminan per anggota: satu iuran + penalti, disetor sebelum kelompok dikunci, tanpa biaya admin, dikembalikan di akhir. Bukan pendapatan.
+- Dana pencairan = iuran + penalti periode itu − tunggakan penerima yang dipotong; biaya admin tidak ikut dicairkan (pendapatan LingkarPay).
+- Penalti keterlambatan: persentase tetap dari iuran, sekali, dibulatkan ke atas.
+- Tunggakan: bayar susulan (+ biaya admin), dipotong dari jatah giliran, atau ditutup dari jaminan; penunggak diblokir dari kelompok baru.
+- Urutan giliran diundi sistem dan bisa diperiksa publik; kuorum (mayoritas mutlak, 3 hari) hanya setelah jatuh tempo.
+- Biaya Midtrans (MDR per kanal) dan biaya gas mainnet belum diperhitungkan di kode; ambil dari tarif resmi saat menyusun unit economics.
 
-Referensi: `docs/DESIGN.md` bagian 5 (tagihan) dan bagian 8 (pencairan), proposal Bab IV dan V.
+Referensi: `docs/ATURAN_BISNIS.md`, `docs/KEAMANAN.md`, proposal Bab IV dan V.

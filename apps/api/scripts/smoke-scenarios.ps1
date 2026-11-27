@@ -81,6 +81,9 @@ $circle = Api POST "/circles" @{ name = "Skenario $Scenario $stamp"; contributio
 $cid = $circle.id
 $null = Api POST "/circles/$cid/members" @{ email = "skn-b-$stamp@example.com" } $a.token
 $null = Api POST "/circles/$cid/invitation/accept" @{ payoutAccount = @{ channel = "GOPAY"; accountNumber = "081234567890"; accountName = "Skenario B" } } $b.token
+# Jaminan disimulasikan (DEV_TOOLS); jalur sungguhan lewat Snap dari halaman kelompok.
+$null = Api POST "/dev/circles/$cid/deposit/simulate" $null $a.token
+$null = Api POST "/dev/circles/$cid/deposit/simulate" $null $b.token
 $null = Api POST "/circles/$cid/start" @{} $a.token
 $d = Api GET "/circles/$cid" $null $a.token
 $body = @{ circleId = $cid; periodId = $d.currentPeriod.id; memberId = $d.myMemberId }

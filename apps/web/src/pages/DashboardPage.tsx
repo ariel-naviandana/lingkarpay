@@ -4,13 +4,17 @@ import { Badge, Button, Card } from "../components/ui";
 import { InvitationsCard } from "../components/InvitationsCard";
 import { useAuth } from "../context/useAuth";
 import { api } from "../api";
-import { formatDateTime, rupiah } from "../lib/format";
+import { formatDateTime, formatYmd, orderLabel, rupiah } from "../lib/format";
 import type { Circle, CircleDetail, CirclePaymentItem, CirclePayoutItem } from "../types";
 
 interface UnpaidAlert {
   circleId: number;
   circleName: string;
   periodNo: number;
+  /** true = tunggakan periode lama yang sudah ditutup kuorum. */
+  arrears?: boolean;
+  /** true = setoran dana jaminan kelompok draft. */
+  deposit?: boolean;
   contributionAmount: number;
   penaltyDue: number;
   adminFee: number;
@@ -23,6 +27,7 @@ interface ActivityItem {
   badge: string;
   message: string;
   time: string;
+  ts: number;
 }
 
 export default function DashboardPage() {
@@ -59,40 +64,35 @@ export default function DashboardPage() {
               const payments: CirclePaymentItem[] = payRes.payments || [];
               const payouts: CirclePayoutItem[] = payRes.payouts || [];
 
-              for (const p of payments.slice(0, 5)) {
-                let tone: "green" | "amber" | "purple" | "gray" = "green";
-                let badge = "Lunas";
-
-                if (p.status === "ANCHORED") {
-                  tone = "purple";
-                  badge = "Tercatat on-chain";
-                } else if (p.status === "SETTLED_PENDING_CHAIN") {
-                  tone = "amber";
-                  badge = "Menunggu rantai";
-                } else if (p.status === "PENDING") {
-                  tone = "gray";
-                  badge = "Menunggu bayar";
-                } else if (p.status === "FAILED" || p.status === "EXPIRED") {
-                  tone = "gray";
-                  badge = p.status === "EXPIRED" ? "Kedaluwarsa" : "Gagal";
-                }
-
+              for (const p of payments) {
+                const settled = ["SETTLED", "SETTLED_PENDING_CHAIN", "ANCHORED"].includes(p.status);
+                const [label, labelTone] =
+                  p.isDeposit && settled
+                    ? (["Jaminan diterima", "green"] as const)
+                    : p.isArrearsPayment && settled
+                    ? (["Lunas · tunggakan diteruskan", "green"] as const)
+                    : orderLabel(p.status);
+                const at = p.paidAt || p.createdAt;
                 allActivities.push({
                   id: `pay-${p.orderId}`,
-                  tone,
-                  badge,
-                  message: `Iuran ${p.memberName} periode ${p.periodNo} (${c.name}): ${p.status === "ANCHORED" ? "tercatat di Sepolia" : p.status}`,
-                  time: formatDateTime(p.paidAt || p.createdAt),
+                  tone: labelTone === "red" ? "gray" : labelTone,
+                  badge: label,
+                  message: p.isDeposit
+                    ? `Dana jaminan ${p.memberName} · ${c.name} · ${rupiah(p.grossAmount)}`
+                    : `${p.isArrearsPayment ? "Pelunasan tunggakan" : "Iuran"} ${p.memberName} periode ${p.periodNo} · ${c.name} · ${rupiah(p.grossAmount)}`,
+                  time: formatDateTime(at),
+                  ts: new Date(at).getTime(),
                 });
               }
 
-              for (const po of payouts.slice(0, 3)) {
+              for (const po of payouts) {
                 allActivities.push({
                   id: `payout-${po.id}`,
                   tone: "green",
                   badge: "Pencairan",
-                  message: `Pencairan periode ${po.periodNo} ${c.name} (${rupiah(po.amount)}): ${po.status}`,
+                  message: `Pencairan periode ${po.periodNo} · ${c.name} · ${rupiah(po.amount)}${po.destination ? ` ke ${po.destination.channelLabel} ••••${po.destination.last4}` : ""}`,
                   time: formatDateTime(po.createdAt),
+                  ts: new Date(po.createdAt).getTime(),
                 });
               }
             }
@@ -103,7 +103,7 @@ export default function DashboardPage() {
       );
 
       setCircleDetails(detailsMap);
-      setActivities(allActivities);
+      setActivities(allActivities.sort((a, b) => b.ts - a.ts));
     } catch (err: unknown) {
       setError(
         err instanceof Error
@@ -130,6 +130,7 @@ export default function DashboardPage() {
   const unpaidAlerts: UnpaidAlert[] = [];
   let nextTurnText = "Belum ada giliran aktif";
   let nextTurnSub = "–";
+  let nextTurnDue = Infinity;
 
   for (const c of circles) {
     const detail = circleDetails[c.id];
@@ -157,13 +158,47 @@ export default function DashboardPage() {
       });
     }
 
-    // Find next turn
-    if (myMember?.turnOrder && detail.periods) {
-      const myPeriod = detail.periods.find((p) => p.periodNo === myMember.turnOrder);
-      if (myPeriod && (myPeriod.status === "scheduled" || myPeriod.status === "running")) {
-        nextTurnText = `Periode ${myPeriod.periodNo}`;
-        const totalPot = c.contributionAmount * c.memberCount;
-        nextTurnSub = `${c.name} · ${rupiah(totalPot)}`;
+    // Jaminan saya yang belum disetor di kelompok draft.
+    if (
+      c.status === "draft" &&
+      (c.depositAmount ?? 0) > 0 &&
+      !(detail.deposits ?? []).some((d) => d.memberId === detail.myMemberId)
+    ) {
+      unpaidAlerts.push({
+        circleId: c.id,
+        circleName: c.name,
+        periodNo: 0,
+        deposit: true,
+        contributionAmount: c.depositAmount!,
+        penaltyDue: 0,
+        adminFee: 0,
+        totalGross: c.depositAmount!,
+      });
+    }
+
+    // Tunggakan saya yang belum lunas (iuran + penalti + biaya admin saat dilunasi).
+    for (const a of detail.arrears ?? []) {
+      if (a.status !== "open" || a.debtorMemberId !== detail.myMemberId) continue;
+      unpaidAlerts.push({
+        circleId: c.id,
+        circleName: c.name,
+        periodNo: a.periodNo,
+        arrears: true,
+        contributionAmount: a.amount,
+        penaltyDue: a.penaltyAmount,
+        adminFee: c.adminFee || 0,
+        totalGross: a.totalDue + (c.adminFee || 0),
+      });
+    }
+
+    // Giliran saya berikutnya: yang paling dekat jatuh tempo di semua kelompok.
+    const myPeriod = detail.periods?.find((p) => p.recipientMemberId === detail.myMemberId);
+    if (myPeriod && myPeriod.status !== "done") {
+      const due = new Date(myPeriod.dueDate).getTime();
+      if (due < nextTurnDue) {
+        nextTurnDue = due;
+        nextTurnText = myPeriod.status === "ready_payout" ? `Siap cair (periode ${myPeriod.periodNo})` : `Periode ${myPeriod.periodNo}`;
+        nextTurnSub = `${c.name} · target ${rupiah(c.contributionAmount * c.memberCount)} · ${formatDateTime(myPeriod.dueDate)}`;
       }
     }
   }
@@ -216,15 +251,27 @@ export default function DashboardPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-amber-200 bg-amber-soft p-4 sm:p-5">
           <div>
             <b className="text-amber-950 block">
-              Iuran {unpaidAlerts[0].circleName} Periode {unpaidAlerts[0].periodNo} menunggu pembayaran
+              {unpaidAlerts[0].deposit
+                ? `Dana jaminan ${unpaidAlerts[0].circleName} menunggu disetor`
+                : `${unpaidAlerts[0].arrears ? "Tunggakan" : "Iuran"} ${unpaidAlerts[0].circleName} Periode ${unpaidAlerts[0].periodNo} menunggu pembayaran`}
+              {unpaidAlerts.length > 1 && ` (+${unpaidAlerts.length - 1} tagihan lain)`}
             </b>
             <p className="mt-1 text-sm text-amber-900">
+              {unpaidAlerts[0].deposit ? (
+                <>Jaminan {rupiah(unpaidAlerts[0].totalGross)} tanpa biaya admin, dikembalikan saat kelompok selesai.</>
+              ) : (
+                <>
               Total tagihan {rupiah(unpaidAlerts[0].totalGross)}: iuran {rupiah(unpaidAlerts[0].contributionAmount)}
               {unpaidAlerts[0].penaltyDue > 0 && `, penalti ${rupiah(unpaidAlerts[0].penaltyDue)}`}
               {unpaidAlerts[0].adminFee > 0 && `, biaya admin ${rupiah(unpaidAlerts[0].adminFee)}`}.
+                </>
+              )}
             </p>
           </div>
-          <Link to={`/groups/${unpaidAlerts[0].circleId}/pay`} className="shrink-0">
+          <Link
+            to={unpaidAlerts[0].arrears || unpaidAlerts[0].deposit ? `/groups/${unpaidAlerts[0].circleId}` : `/groups/${unpaidAlerts[0].circleId}/pay`}
+            className="shrink-0"
+          >
             <Button className="w-full sm:w-auto">Bayar sekarang</Button>
           </Link>
         </div>
@@ -239,7 +286,7 @@ export default function DashboardPage() {
           </p>
           <p className="text-xs sm:text-sm text-stone-500">
             {unpaidAlerts.length > 0
-              ? `${unpaidAlerts.length} kelompok menunggu pembayaran`
+              ? `${unpaidAlerts.length} tagihan menunggu pembayaran`
               : "Semua iuran periode berjalan lunas"}
           </p>
         </Card>
@@ -285,7 +332,7 @@ export default function DashboardPage() {
             const isCreator = detail?.isCreator ?? (Number(c.createdBy) === Number(user?.id));
             const currentPeriodNo = detail?.currentPeriod?.periodNo ?? 1;
 
-            let badgeTone: "green" | "amber" | "gray" | "purple" = "gray";
+            let badgeTone: "green" | "amber" | "gray" | "purple" | "red" = "gray";
             let badgeText = "Belum dimulai";
 
             if (c.status === "active") {
@@ -302,10 +349,16 @@ export default function DashboardPage() {
             } else if (c.status === "completed") {
               badgeTone = "purple";
               badgeText = "Selesai";
+            } else if (c.status === "cancelled") {
+              badgeTone = "red";
+              badgeText = "Dibatalkan";
             }
 
+            const cpStatus = detail?.currentPeriod?.status;
             const paidCount =
-              detail?.members.filter((m) => m.currentPayment?.paid).length ?? 0;
+              cpStatus === "ready_payout"
+                ? c.memberCount
+                : detail?.members.filter((m) => m.currentPayment?.paid).length ?? 0;
             const totalCount = c.memberCount || 1;
             const pct = Math.min(100, Math.round((paidCount / totalCount) * 100));
 
@@ -323,11 +376,21 @@ export default function DashboardPage() {
                     <span className="text-stone-500">
                       {c.status === "active"
                         ? `Periode ${currentPeriodNo} dari ${c.memberCount}`
+                        : c.status === "completed"
+                        ? `${c.memberCount} periode selesai`
+                        : c.status === "cancelled"
+                        ? "Dibatalkan sebelum dimulai"
                         : "Menunggu anggota bergabung"}
                     </span>
                     <b>
                       {c.status === "active"
-                        ? `${paidCount} dari ${c.memberCount} sudah bayar`
+                        ? cpStatus === "ready_payout"
+                          ? "Siap cair"
+                          : `${paidCount} dari ${c.memberCount} sudah bayar`
+                        : c.status === "completed"
+                        ? "Selesai"
+                        : c.status === "cancelled"
+                        ? "–"
                         : `${c.joinedCount ?? 1} dari ${c.memberCount} bergabung`}
                     </b>
                   </div>
@@ -335,7 +398,7 @@ export default function DashboardPage() {
                     <div
                       className="h-2 rounded-full bg-brand"
                       style={{
-                        width: `${c.status === "active" ? pct : ((c.joinedCount ?? 1) / totalCount) * 100}%`,
+                        width: `${c.status === "completed" ? 100 : c.status === "active" ? pct : ((c.joinedCount ?? 1) / totalCount) * 100}%`,
                       }}
                     />
                   </div>
@@ -344,7 +407,13 @@ export default function DashboardPage() {
                       ? c.chainCircleId
                         ? `Tercatat on-chain Sepolia (#${c.chainCircleId})`
                         : "Menunggu sinkronisasi Sepolia"
-                      : "Mulai setelah semua anggota bergabung"}
+                      : c.status === "completed"
+                      ? c.chainCircleId
+                        ? `Selesai · tercatat on-chain Sepolia (#${c.chainCircleId})`
+                        : "Selesai"
+                      : c.status === "cancelled"
+                      ? "Jaminan yang sudah disetor dikembalikan"
+                      : `Mulai paling cepat ${c.startDate ? formatYmd(c.startDate) : "–"}, setelah semua anggota bergabung dan menyetor jaminan`}
                   </p>
                 </Card>
               </Link>

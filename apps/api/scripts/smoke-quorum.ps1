@@ -97,6 +97,8 @@ $null = Api POST "/circles/$cid/members" @{ email = "kuo-c-$stamp@example.com" }
 # Undangan diterima dengan rekening pencairan masing-masing.
 $null = Api POST "/circles/$cid/invitation/accept" @{ payoutAccount = @{ channel = "MANDIRI"; accountNumber = "1300012345678"; accountName = "Kuorum B" } } $b.token
 $null = Api POST "/circles/$cid/invitation/accept" @{ payoutAccount = @{ channel = "DANA"; accountNumber = "081298765432"; accountName = "Kuorum C" } } $c.token
+# Jaminan tiap anggota disimulasikan (DEV_TOOLS); jalur sungguhan lewat Snap dari halaman kelompok.
+foreach ($t in @($a.token, $b.token, $c.token)) { $null = Api POST "/dev/circles/$cid/deposit/simulate" $null $t }
 $null = Api POST "/circles/$cid/start" @{} $a.token
 $d = Api GET "/circles/$cid" $null $a.token
 $pid1 = $d.currentPeriod.id

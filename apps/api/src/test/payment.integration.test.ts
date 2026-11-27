@@ -1,16 +1,7 @@
 import { after, before, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { computeSignature } from "../lib/signature.js";
-import {
-  TEST_SERVER_KEY,
-  TEST_SIGNATURE_KEY,
-  boot,
-  notification,
-  prepareTestDatabase,
-  resetDb,
-  seedCircle,
-  type Seeded,
-} from "./helpers.js";
+import { boot, markDepositsPaid, notification, prepareTestDatabase, resetDb, seedCircle, TEST_SERVER_KEY, TEST_SIGNATURE_KEY, type Seeded } from "./helpers.js";
 
 /**
  * Tes integrasi alur pembayaran dengan Postgres sungguhan (database "lingkarpay_test").
@@ -528,6 +519,7 @@ describe("kelompok on-chain (createCircle)", () => {
       accountNumber: "081234567890",
       accountName: "Pengguna 2",
     });
+    await markDepositsPaid(ctx.pool, c.id);
     await ctx.circles.startCircle(u1.id, c.id);
     const period = await ctx.pool.query<{ id: number }>(
       "SELECT id FROM periods WHERE circle_id = $1 AND period_no = 1",

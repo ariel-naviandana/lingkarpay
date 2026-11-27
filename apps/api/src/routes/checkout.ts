@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { config } from "../config.js";
 import { requireUser } from "../lib/auth.js";
-import { createArrearsCheckout, createCheckout } from "../services/checkout.js";
+import { createArrearsCheckout, createCheckout, createDepositCheckout } from "../services/checkout.js";
 import { syncOrderFromGateway } from "../services/gatewayStatus.js";
 import { cancelOrder, expireOrder, getOrderForUser } from "../services/orders.js";
 
@@ -35,6 +35,14 @@ export async function checkoutRoutes(app: FastifyInstance) {
     const user = await requireUser(req);
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
     const result = await createArrearsCheckout(user, id);
+    return reply.code(result.reused ? 200 : 201).send(result);
+  });
+
+  // Setoran dana jaminan anggota (kelompok draft). Tanpa biaya admin; dikembalikan saat kelompok selesai.
+  app.post("/circles/:id/deposit/checkout", async (req, reply) => {
+    const user = await requireUser(req);
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const result = await createDepositCheckout(user, id);
     return reply.code(result.reused ? 200 : 201).send(result);
   });
 

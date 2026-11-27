@@ -189,6 +189,19 @@ export async function reconcileCircle(user: AuthUser, circleId: number, live: bo
     (a) => a.forward_ref === null || Number(a.forward_amount) !== Number(a.amount) + Number(a.penalty_amount),
   ).length;
 
+  // Dana jaminan: yang terpakai + dikembalikan harus sama dengan yang disetor setelah kelompok selesai.
+  const deposits = (
+    await pool.query<{ status: string; amount: number; used_amount: number; refund_amount: number | null; refund_ref: string | null }>(
+      "SELECT status, amount, used_amount, refund_amount, refund_ref FROM deposits WHERE circle_id = $1",
+      [circleId],
+    )
+  ).rows;
+  const depositIssues = deposits.filter(
+    (d) =>
+      d.status === "refunded" &&
+      Number(d.used_amount) + Number(d.refund_amount ?? 0) !== Number(d.amount),
+  ).length;
+
   const issueOrders = orders.filter((o) => o.flags.some((f) => !INFO_FLAGS.has(f))).length;
   const periodIssues = periods.filter((p) => p.difference !== null && p.difference !== 0).length;
   const circleIssue = createJob?.status === "failed" ? 1 : 0;
@@ -205,7 +218,7 @@ export async function reconcileCircle(user: AuthUser, circleId: number, live: bo
       collectedForPayout: paid.reduce((s, o) => s + o.amount + o.penalty_amount, 0),
       payoutTotal: payouts.reduce((s, p) => s + p.amount, 0),
       webhookEventsByOutcome: Object.fromEntries(events.map((e) => [e.outcome ?? "unprocessed", e.n])),
-      issues: issueOrders + periodIssues + circleIssue + arrearsNotForwarded,
+      issues: issueOrders + periodIssues + circleIssue + arrearsNotForwarded + depositIssues,
       liveChecked,
     },
     chain: {
@@ -219,8 +232,16 @@ export async function reconcileCircle(user: AuthUser, circleId: number, live: bo
       openAmount: arrears.filter((a) => a.status === "open").reduce((s, a) => s + Number(a.amount), 0),
       paid: arrears.filter((a) => a.status === "paid").length,
       deducted: arrears.filter((a) => a.status === "deducted").length,
+      coveredByDeposit: arrears.filter((a) => a.status === "covered").length,
       forwardedTotal: settledArrears.reduce((s, a) => s + Number(a.forward_amount ?? 0), 0),
       notForwarded: arrearsNotForwarded,
+    },
+    deposits: {
+      count: deposits.length,
+      heldTotal: deposits.filter((d) => d.status === "held").reduce((s, d) => s + Number(d.amount) - Number(d.used_amount), 0),
+      usedTotal: deposits.reduce((s, d) => s + Number(d.used_amount), 0),
+      refundedTotal: deposits.reduce((s, d) => s + Number(d.refund_amount ?? 0), 0),
+      issues: depositIssues,
     },
     periods,
     orders,

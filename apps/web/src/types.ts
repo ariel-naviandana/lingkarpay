@@ -44,7 +44,7 @@ export interface Circle {
   periodDays: number;
   penaltyPct: number;
   adminFee: number;
-  status: "draft" | "active" | "completed";
+  status: "draft" | "active" | "completed" | "cancelled";
   chainCircleId: string | null; // null sampai kelompok dicatat di chain
   createdBy: number;
   joinedCount?: number;
@@ -54,6 +54,8 @@ export interface Circle {
   startDate?: string;
   /** Seed undian urutan giliran; terisi setelah kelompok dimulai. */
   drawSeed?: string | null;
+  /** Dana jaminan per anggota (0 = kelompok lama tanpa jaminan). */
+  depositAmount?: number;
 }
 
 /** Kelompok pada daftar admin: ditambah nama pembuat (tanpa email). */
@@ -122,6 +124,19 @@ export interface CircleDetail {
   currentPeriod: Period | null;
   /** Tunggakan kelompok ini (terbuka untuk semua anggota). */
   arrears?: Arrear[];
+  /** Dana jaminan yang sudah disetor anggota. */
+  deposits?: Deposit[];
+}
+
+/** Dana jaminan satu anggota: disetor sebelum kelompok dikunci, dikembalikan saat selesai/dibatalkan. */
+export interface Deposit {
+  memberId: number;
+  status: "held" | "refunded";
+  amount: number;
+  /** Bagian jaminan yang dipakai menutup tunggakan anggota ini. */
+  usedAmount: number;
+  paidAt: string;
+  refund: { amount: number; destination: PayoutAccount | null; transferRef: string | null; refundedAt: string | null } | null;
 }
 
 /** Iuran yang tidak dibayar saat periode ditutup kuorum, dan pelunasannya. */
@@ -136,7 +151,7 @@ export interface Arrear {
   amount: number;
   penaltyAmount: number;
   totalDue: number;
-  status: "open" | "paid" | "deducted";
+  status: "open" | "paid" | "deducted" | "covered";
   settledAt: string | null;
   settledPayoutPeriodNo: number | null;
   forward: { amount: number; destination: PayoutAccount | null; transferRef: string | null; forwardedAt: string | null } | null;
@@ -182,7 +197,8 @@ export interface PublicConfig {
 
 export interface CirclePaymentItem {
   orderId: string;
-  periodNo: number;
+  /** null untuk setoran dana jaminan. */
+  periodNo: number | null;
   memberRef: string;
   memberName: string;
   status: OrderStatus;
@@ -197,6 +213,8 @@ export interface CirclePaymentItem {
   txHash: string | null;
   /** Pelunasan tunggakan periode lalu (diteruskan ke penerima periode itu, tidak dicatat ke contract). */
   isArrearsPayment?: boolean;
+  /** Setoran dana jaminan (tidak dicatat ke contract). */
+  isDeposit?: boolean;
 }
 
 export interface CirclePayoutItem {

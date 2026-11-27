@@ -114,8 +114,8 @@ Jaminan urutan: kelompok dibuat di chain lebih dulu; pembayaran yang masuk sebel
 Idempotensi chain: `createCircle` di contract menerima `externalRef` = `keccak256("lingkarpay:circle:<id database>")` dan menolak referensi ganda; worker yang mengulang pekerjaan melanjutkan dari state contract (`circleIdByRef`, `getMembers`, `getPayment`, `getPeriod`, `hasVoted`, `proposalOfPeriod`) tanpa membuat catatan ganda.
 
 ## 8. Pencairan (payout)
-- Simulasi (bawaan): hanya operator (pembuat kelompok), hanya saat periode `ready_payout`. Dana = iuran + penalti terkumpul (tanpa biaya admin). Mencatat `payouts`, mengantrekan `markPayout`, menandai periode `done`, membuka periode berikutnya (atau menutup kelompok).
-- Iris sandbox (opsional, `IRIS_ENABLED=true` + kunci creator & approver): membuat payout lalu approve. Data penerima dummy; nomor rekening tidak disimpan, hanya hash Keccak-256-nya. Bentuk request mengikuti dokumentasi Iris dan **belum diuji** di sandbox kelompok. Notifikasi status payout dari Iris belum ditangani; status berhenti di `APPROVED`.
+- Simulasi (bawaan): pembuat kelompok **atau penerima giliran**, hanya saat periode `ready_payout`, dan hanya bila contract juga menyatakan periode siap cair dengan penerima yang sama (gerbang contract). Dana = iuran + penalti terkumpul − tunggakan penerima yang dipotong (tanpa biaya admin), ke rekening pencairan penerima (transfer simulasi, ref `SIM-TRF-...`). Mencatat `payouts`, mengantrekan `markPayout`, menandai periode `done`, membuka periode berikutnya dengan tenggat digeser bila terlambat (atau menutup kelompok, menutup tunggakan dari jaminan, dan mengembalikan sisa jaminan).
+- Iris sandbox (opsional, hanya pembuat kelompok, `IRIS_ENABLED=true` + kunci creator & approver): membuat payout lalu approve. Data penerima dummy; nomor rekening tidak disimpan, hanya hash Keccak-256-nya. Bentuk request mengikuti dokumentasi Iris dan **belum diuji** di sandbox kelompok. Notifikasi status payout dari Iris belum ditangani; status berhenti di `APPROVED`.
 
 ## 9. Keputusan yang diambil (bisa diubah)
 - DB: PostgreSQL via Docker Compose (port 5440), akses `pg` + SQL migrasi biasa (tanpa ORM).
@@ -125,14 +125,21 @@ Idempotensi chain: `createCircle` di contract menerima `externalRef` = `keccak25
 
 ## 10. Kuorum (usulan tutup periode)
 Keputusan operasional untuk periode yang iurannya belum lengkap, dengan aturan yang sama dengan contract (mayoritas mutlak, satu anggota satu suara, batas 3 hari).
-- `POST /periods/:periodId/close-proposals`: anggota membuat usulan (periode harus `running` dan belum lengkap; satu usulan terbuka per periode). Mengantre job `proposeClosePeriod`.
+- `POST /periods/:periodId/close-proposals`: anggota membuat usulan (periode harus `running`, **sudah lewat jatuh tempo**, dan belum lengkap; satu usulan terbuka per periode). Mengantre job `proposeClosePeriod`.
 - `POST /proposals/:id/votes` body `{ approve }`: satu suara per anggota; mengantre job `castVote`. Setuju >= kuorum: periode menjadi `ready_payout`, usulan `executed`, job `executeProposal` diantre. Penolak sudah terlalu banyak: usulan `rejected`. Lewat batas waktu: `expired` (`VOTING_CLOSED`).
 - Bila semua iuran akhirnya lunas, usulan yang masih terbuka menjadi `expired`.
 - Setelah disetujui, periode tidak menerima iuran baru (`PERIOD_NOT_OPEN`); pencairan memakai dana yang terkumpul. Pembayaran dari order yang dibuat sebelum penutupan dan baru lunas sesudahnya tidak bisa dicatat on-chain (contract menolak) dan muncul di rekonsiliasi.
+- Saat disetujui, anggota yang belum membayar menjadi penunggak (tabel `arrears`), lihat `ATURAN_BISNIS.md` bagian 3.8.
 - Mengganti anggota hanya ada di contract (belum di backend).
+
+## 11. Aturan bisnis setelah v1
+Bagian ini menunjuk ke `docs/ATURAN_BISNIS.md`, yang memuat aturan terkini: undangan dengan rekening wajib, dana jaminan, tanggal mulai, undian giliran, kuorum setelah jatuh tempo, tunggakan, pencairan oleh penerima, pembatalan draft, dan peran admin platform.
 
 ## Riwayat
 - 2026-11-08: draf awal.
 - 2026-11-08: disesuaikan dengan implementasi: tabel `users` memakai `email`/`password_hash` plus `sessions`; `circles.member_count`; `chain_jobs.kind` (recordPayment/markPayout) dan `chain_transactions.job_id`; `orders.expires_at`; indeks unik parsial; `idempotency_key` berformat `circle:period:member#percobaan`; endpoint tambahan (`/circles/:id/start`, `/payouts/iris`, `/public-config`, `/orders/:orderId`); antarmuka outbox berupa fungsi.
 - 2026-11-08: outbox ditambah job `createCircle` dan fungsi `markCircleCreated` (migrasi 002, kolom `chain_jobs.circle_id`). `claimJobs` menahan job pembayaran/pencairan sampai kelompoknya on-chain dan mengisi `payload.circleChainId`. Rekonsiliasi memuat `chain` (status kelompok di chain).
+- 2026-11-24: peran admin (migrasi 004) dan rincian pencairan.
+- 2026-11-27: gerbang contract sebelum pencairan, rekening pencairan (005), undangan dan tunggakan (006), tanggal mulai dan undian giliran (007), batas laju dan header keamanan.
+- 2026-11-28: dana jaminan dan pembatalan kelompok draft (008). Aturan lengkap: `ATURAN_BISNIS.md`.
 - 2026-11-11: kuorum (usulan tutup periode): migrasi 003 (`proposals`, `proposal_votes`, kolom `chain_jobs.proposal_id` dan `vote_id`), tiga jenis job baru (`proposeClosePeriod`, `castVote`, `executeProposal`), `markProposalCreated`, gating `castVote`/`executeProposal`/`markPayout`. `createCircle` di contract memakai `externalRef` (idempotensi). Contract final ter-deploy di Sepolia (v2).

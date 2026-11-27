@@ -1,6 +1,6 @@
 # Panduan Menjelaskan Kode — Jalur Payment Gateway
 
-Untuk persiapan progress report dan presentasi. Bacalah berurutan: gambaran besar, peta kode, tiap komponen, satu alur dari awal sampai akhir, lalu tanya-jawab. Angka di sini sudah dicek ke kode: kode backend (`apps/api/src`), 34 endpoint, 14 tabel, 146 tes backend dan 40 tes contract.
+Untuk persiapan progress report dan presentasi. Bacalah berurutan: gambaran besar, peta kode, tiap komponen, satu alur dari awal sampai akhir, lalu tanya-jawab. Angka di sini sudah dicek ke kode: kode backend (`apps/api/src`), 37 endpoint, 15 tabel, 151 tes backend dan 40 tes contract.
 
 ## 1. Gambaran besar
 
@@ -12,7 +12,7 @@ Untuk persiapan progress report dan presentasi. Bacalah berurutan: gambaran besa
 2. **Solusi:** pembayaran tetap lewat kanal yang sudah dikenal (Midtrans), aturan di smart contract.
 3. **Peran backend:** jembatan antara dunia rupiah (Midtrans) dan dunia blockchain. Smart contract tidak bisa melihat dunia luar, jadi backend yang meneruskan kabar "iuran sudah dibayar" secara terpercaya.
 4. **Tiga hal yang dijaga backend:** (a) keaslian: signature Midtrans diverifikasi; (b) ketepatan: tidak ada pembayaran ganda, status tidak bisa mundur, jumlah dicocokkan; (c) ketahanan: kalau blockchain gagal, pembayaran tetap sah dan pencatatan diulang.
-5. **Bukti:** 146 tes backend dan 40 tes contract, smoke test alur penuh dan kuorum, lima skenario di Midtrans sandbox sungguhan, dan alur lengkap tercatat di Ethereum Sepolia dengan hash transaksi yang bisa dibuka di Etherscan (`docs/BUKTI_SEPOLIA.md`).
+5. **Bukti:** 151 tes backend dan 40 tes contract, smoke test alur penuh dan kuorum, lima skenario di Midtrans sandbox sungguhan, dan alur lengkap tercatat di Ethereum Sepolia dengan hash transaksi yang bisa dibuka di Etherscan (`docs/BUKTI_SEPOLIA.md`).
 
 ### Diagram alur
 ```
@@ -40,7 +40,7 @@ Operator → POST /payouts/simulate → pencairan dicatat → periode berikutnya
 | `src/lib/*` | Alat kecil: signature, hash, uang, HTTP klien, error, auth |
 | `src/db/*`, `db/migrations/*` | Koneksi Postgres, transaksi, skema SQL |
 | `src/chain/` | Tempat modul chain (jalur smart contract); kerangka saja |
-| `src/**/*.test.ts`, `src/test/*` | 146 tes (unit dan integrasi) |
+| `src/**/*.test.ts`, `src/test/*` | 151 tes (unit dan integrasi) |
 | `scripts/*.ps1` | Skrip uji alur penuh dan skenario di sandbox |
 
 Aturan arsitektur yang bisa kamu sebut: **route tipis, logika di service, perubahan status hanya lewat satu modul**.
@@ -59,8 +59,9 @@ Aturan arsitektur yang bisa kamu sebut: **route tipis, logika di service, peruba
 - **Parser JSON khusus:** body kosong dengan header JSON diterima sebagai `{}` (bawaan Fastify menolaknya), dan kunci `__proto__` dibuang.
 - **`server.ts`:** menyalakan server, memaksa DNS memilih IPv4 dulu (di Windows sering timeout), menjalankan penyapu order kedaluwarsa tiap menit, dan mencatat sidik jari key (bukan key-nya) saat start.
 
-### 3.3 Database (`db/migrations/001_init.sql`, `002_*.sql`, `003_*.sql`, `db/pool.ts`)
-- **13 tabel:** `users`, `sessions`, `circles`, `members`, `periods`, `orders`, `order_status_history`, `webhook_events`, `payouts`, `chain_jobs`, `chain_transactions`, dan (migrasi 003) `proposals` serta `proposal_votes`.
+### 3.3 Database (`db/migrations/001` sampai `008`, `db/pool.ts`)
+- **15 tabel:** `users`, `sessions`, `circles`, `members`, `periods`, `orders`, `order_status_history`, `webhook_events`, `payouts`, `chain_jobs`, `chain_transactions`, `proposals`, `proposal_votes` (003), `arrears` (006), dan `deposits` (008).
+- **Migrasi lanjutan:** 004 peran admin; 005 rekening pencairan dan tujuan transfer; 006 undangan dan tunggakan; 007 tanggal mulai, seed undian, waktu buka periode; 008 dana jaminan, jenis order (`contribution`/`deposit`), status kelompok `cancelled`.
 - **Keputusan penting:**
   - **Uang = BIGINT rupiah** (bilangan bulat), tidak pernah float, agar tidak ada selisih pembulatan.
   - **Satu iuran aktif per anggota per periode** dijaga oleh *indeks unik parsial* di database (`orders_one_active_per_member_period`), bukan hanya oleh kode. Walaupun ada bug atau permintaan serentak, database menolak order ganda.
@@ -73,8 +74,8 @@ Aturan arsitektur yang bisa kamu sebut: **route tipis, logika di service, peruba
 Daftar/login sederhana untuk sandbox: kata sandi di-hash `scrypt`, sesi berupa token acak yang hanya disimpan dalam bentuk hash SHA-256, masa berlaku 7 hari. Bukan fokus penilaian; cukup untuk membedakan pemilik dan pembuat kelompok.
 
 ### 3.4 Kelompok, anggota, periode (`services/circles.ts`, `periods.ts`)
-- **Alur:** buat kelompok (status `draft`) → tambah anggota lewat email → `start`.
-- **`startCircle`:** mengunci urutan giliran dan parameter, membuat semua periode (periode 1 langsung `running`, sisanya `scheduled`), dan **mengantre job `createCircle`** untuk blockchain. Semua dalam satu transaksi.
+- **Alur:** buat kelompok (status `draft`, tanggal mulai, rekening pembuat) → undang lewat email → anggota menerima dengan rekening → semua menyetor jaminan → `start` pada/sesudah tanggal mulai. Draft bisa dibatalkan pembuat (jaminan dikembalikan).
+- **`startCircle`:** mengundi urutan giliran (seed acak, `SHA-256(seed:memberRef)`), mengunci parameter, membuat semua periode (periode 1 langsung `running`, sisanya `scheduled`), dan **mengantre job `createCircle`** untuk blockchain. Semua dalam satu transaksi.
 - **`refreshPeriodReadiness`:** begitu semua anggota punya iuran lunas, periode berubah ke `ready_payout`. Ini cermin dari sisi backend; keputusan resmi ada di contract.
 - **Otorisasi:** hanya anggota yang boleh melihat; hanya pembuat yang boleh mengundang anggota, memulai (pada/sesudah tanggal mulai; urutan giliran diundi server), dan melihat rekonsiliasi; pencairan boleh oleh pembuat atau penerima giliran periode itu.
 
@@ -137,8 +138,9 @@ PENDING ─▶ SETTLED ─▶ ANCHORED          (tercatat di Sepolia)
 - **Payload tanpa data pribadi:** hanya ID samaran dan hash. `refHash` = Keccak-256 dari ringkasan transaksi (bukti silang ke catatan gateway).
 
 ### 3.11 Pencairan (`services/payouts.ts`, `iris.ts`)
-- **Syarat:** hanya pembuat kelompok, hanya saat periode `ready_payout`, dan hanya sekali per periode.
-- **Dana pencairan = iuran + penalti terkumpul** (tanpa biaya admin).
+- **Syarat:** pembuat kelompok atau penerima giliran, hanya saat periode `ready_payout`, hanya sekali per periode, penerima sudah punya rekening, dan contract menyatakan siap cair dengan penerima yang sama (`chainGuard.ts`).
+- **Dana pencairan = iuran + penalti terkumpul − tunggakan penerima yang dipotong** (tanpa biaya admin).
+- **Tunggakan dan jaminan** (`arrears.ts`, `deposits.ts`): lihat `ATURAN_BISNIS.md` bagian 3.3 dan 3.8.
 - **Simulasi (bawaan):** mencatat pencairan, mengantre job `markPayout`, menutup periode, membuka periode berikutnya (atau menutup kelompok di periode terakhir).
 - **Iris** (layanan payout Midtrans): kode klien sudah ada (creator membuat, approver menyetujui) tetapi **belum diuji** karena butuh akun sandbox khusus.
 
@@ -150,7 +152,7 @@ PENDING ─▶ SETTLED ─▶ ANCHORED          (tercatat di Sepolia)
 ### 3.13 Batalkan dan kedaluwarsakan (`services/orders.ts`)
 `POST /orders/:id/cancel` dan `/expire` memanggil Cancel/Expire API Midtrans lalu menyinkronkan status (hasil `FAILED` atau `EXPIRED`) sehingga anggota bisa membayar lagi. Hanya untuk order yang sudah punya transaksi di Midtrans. Catatan: Expire API menandai sukses dengan kode 407, bukan 200; dan keduanya butuh izin Capability pada server key.
 
-### 3.14 Tes (146 tes backend, 40 tes contract)
+### 3.14 Tes (151 tes backend, 40 tes contract)
 | Jenis | Isi | Bergantung pada |
 |---|---|---|
 | Unit (sekitar 35) | signature, uang, hash (vektor uji Keccak/SHA-256), mesin status (semua kombinasi transisi), penalti, tagihan, konfigurasi | Tidak ada |
@@ -159,7 +161,7 @@ PENDING ─▶ SETTLED ─▶ ANCHORED          (tercatat di Sepolia)
 - Skenario yang sulit diuji manual ada di sini: notifikasi duplikat *serentak*, notifikasi tidak berurutan, signature palsu, dua checkout serentak.
 
 ### 3.15 Skrip uji (`scripts/smoke.ps1`, `smoke-scenarios.ps1`, `smoke-quorum.ps1`)
-Menjalankan alur nyata lewat API dan hanya meminta satu langkah manual (membayar di simulator). `smoke.ps1` (19 pemeriksaan), `-Both` (30, termasuk pencairan), serta skenario e-wallet, kedaluwarsa, dan dibatalkan.
+Menjalankan alur nyata lewat API dan hanya meminta satu langkah manual (membayar di simulator). `smoke.ps1` (21 pemeriksaan), `-Both` (32, termasuk pencairan), serta skenario e-wallet, kedaluwarsa, dan dibatalkan.
 
 ### 3.16 Smart contract (`contracts/contracts/LingkarPay.sol`)
 - **Peran:** aturan arisan dan catatan yang bisa diperiksa semua orang. **Tidak menyimpan uang**; rupiah tetap di gateway (arsitektur pilihan A).
@@ -182,20 +184,21 @@ Menjalankan alur nyata lewat API dan hanya meminta satu langkah manual (membayar
 - **Alur:** anggota membuat usulan (`POST /periods/:id/close-proposals`) → job `proposeClosePeriod`; tiap anggota memberi suara (`POST /proposals/:id/votes`) → job `castVote` per suara; saat setuju mencapai kuorum, periode langsung `ready_payout`, usulan `executed`, dan job `executeProposal` diantre; pencairan berjalan dengan dana yang terkumpul.
 - **Penjagaan:** hanya anggota yang boleh mengusulkan, memilih, dan melihat; satu usulan terbuka per periode (indeks unik di database); usulan yang melewati batas waktu menjadi `expired`; bila semua iuran akhirnya lunas, usulan yang masih terbuka ikut `expired`.
 - **Ke chain:** suara dan eksekusi menunggu usulannya punya id on-chain, dan `markPayout` menunggu semua job kuorum terkonfirmasi (lihat 3.10).
-- **Bukti:** 8 tes integrasi + `smoke-quorum.ps1` (15 pemeriksaan) + tercatat di Sepolia (`docs/BUKTI_SEPOLIA.md`).
+- **Syarat tambahan:** periode harus sudah lewat jatuh tempo (`NOT_DUE_YET`). Saat disetujui, yang belum membayar menjadi penunggak.
+- **Bukti:** tes integrasi kuorum + `smoke-quorum.ps1` (19 pemeriksaan) + tercatat di Sepolia (`docs/BUKTI_SEPOLIA.md`).
 - **Batasan:** hanya usulan tutup periode yang terhubung ke backend; ganti anggota hanya di contract.
 
 ## 4. Satu alur dari awal sampai akhir (untuk didemokan)
 | # | Kejadian | Kode yang bekerja | Hasil yang terlihat |
 |---|---|---|---|
-| 1 | Buat kelompok, tambah anggota, mulai | `circles.ts` | Periode 1 `running`; job `createCircle` `queued` |
+| 1 | Buat kelompok, undang, anggota menerima, setor jaminan, kunci | `circles.ts`, `deposits.ts` | Urutan diundi; periode 1 `running`; job `createCircle` `queued` |
 | 2 | Anggota klik bayar | `checkout.ts`, `midtrans.ts` | Order `PENDING`, token Snap, tagihan Rp11.000 |
 | 3 | Bayar di simulator | (Midtrans) | VA terbayar |
 | 4 | Midtrans mengirim webhook | `webhook.ts`, `signature.ts` | Log `webhook diproses ... applied` |
 | 5 | Status berubah | `orderStatus.ts` | `PENDING → SETTLED`, riwayat tercatat |
 | 6 | Pekerjaan antre | `outbox.ts` | Job `recordPayment` `queued` |
 | 7 | Semua anggota lunas | `periods.ts` | Periode `ready_payout` |
-| 8 | Operator mencairkan | `payouts.ts` | Rp20.000 (tanpa biaya admin), periode 2 dibuka |
+| 8 | Pembuat atau penerima mencairkan | `chainGuard.ts`, `payouts.ts` | Rp20.000 (tanpa biaya admin) ke rekening penerima, periode 2 dibuka |
 | 9 | Rekonsiliasi | `reconciliation.ts` | Selisih 0, `issues=0` |
 | 10 | Worker mencatat ke Sepolia | `worker.ts`: `claimJobs` → contract → `markJobConfirmed` | `ANCHORED`; hash transaksi di Etherscan (`BUKTI_SEPOLIA.md`) |
 
@@ -224,9 +227,12 @@ Menjalankan alur nyata lewat API dan hanya meminta satu langkah manual (membayar
 | Biaya gas per transaksi on-chain? | Di Sepolia memakai ETH uji (tanpa biaya riil). Produksi dihitung di business case; mitigasi: pencatatan batch atau layer dua. |
 | Ada biaya admin dan dana minimal? | Biaya admin sudah ada di tagihan (prototipe Rp1.000, asumsi) dan tidak ikut dicairkan. Iuran minimum di API Rp1.000; angka akhir ditetapkan di business case. |
 | Mengapa memakai e-wallet lewat "qris"? | Midtrans melaporkan GoPay lewat QR sebagai `payment_type=qris`. Diuji hanya lewat simulator Midtrans, bukan aplikasi sungguhan. |
-| Berapa yang sudah teruji? | 146 tes backend dan 40 tes contract, smoke test alur penuh (30 pemeriksaan) dan kuorum (19 pemeriksaan), bukti end to end di Sepolia, dan skenario sandbox: sukses VA, sukses e-wallet, kedaluwarsa, dibatalkan. |
+| Berapa yang sudah teruji? | 151 tes backend dan 40 tes contract, smoke test alur penuh (32 pemeriksaan) dan kuorum (19 pemeriksaan), bukti end to end di Sepolia, dan skenario sandbox: sukses VA, sukses e-wallet, kedaluwarsa, dibatalkan. |
 | Bagaimana kalau worker mati di tengah pencatatan? | Percobaan ulang melanjutkan dari state contract. `createCircle` memakai `externalRef` sehingga kelompok tidak dibuat ganda; iuran, suara, dan pencairan yang sudah tercatat dikenali dan dianggap sukses bila hash-nya sama. |
 | Bagaimana kalau iuran tidak lengkap dan periode macet? | Anggota mengusulkan menutup periode; mayoritas mutlak (2 dari 3, dst.) harus setuju dalam 3 hari. Aturan yang sama ditegakkan contract, dan tanpa kuorum penutupan ditolak. Pencairan memakai dana yang terkumpul. |
+| Bagaimana kalau anggota berhenti bayar setelah dapat giliran? | Tunggakannya ditutup dari dana jaminan yang ia setor sebelum kelompok dikunci, lalu diteruskan ke penerima yang kurang; ia juga diblokir dari kelompok baru sampai lunas. |
+| Bisakah pengelola mengatur urutan agar dapat duluan? | Tidak. Urutan diundi server dengan seed acak yang dibuka; siapa pun bisa menghitung ulang di portal verifikasi. |
+| Bisakah kuorum menutup periode sebelum waktunya? | Tidak. Usulan hanya bisa dibuat setelah jatuh tempo. |
 | Apa peran AI? | Lihat `docs/AI_STATEMENT.md`: AI membantu merancang dan menulis draf; semua dijalankan dan diverifikasi sendiri; kesalahan AI yang ditemukan dicatat. |
 
 ## 7. Jujur soal batasan (jangan diklaim lebih)
@@ -239,7 +245,9 @@ Menjalankan alur nyata lewat API dan hanya meminta satu langkah manual (membayar
 - **Penalti keterlambatan** terbukti di tes otomatis, belum di transaksi sandbox sungguhan.
 - **Penalti di-snapshot** saat order dibuat (batasan yang diketahui).
 - **Rekonsiliasi `live=true`** belum dicoba.
-- **Autentikasi** sengaja sederhana (sandbox).
+- **Autentikasi** sengaja sederhana (sandbox), dengan batas laju login dan pendaftaran.
+- **Jaminan, tanggal mulai, tunggakan, dan seed undian** dicatat server, tidak di contract v2; seed dibuat server.
+- **Transfer keluar** (pencairan, penerusan tunggakan, pengembalian jaminan) masih simulasi.
 
 ## 8. Istilah
 | Istilah | Arti singkat |

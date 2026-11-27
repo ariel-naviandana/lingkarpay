@@ -1,7 +1,7 @@
 import { after, before, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
-import { boot, prepareTestDatabase, resetDb } from "./helpers.js";
+import { boot, markDepositsPaid, prepareTestDatabase, resetDb } from "./helpers.js";
 
 /**
  * Biaya admin tetap dari aplikasi dan alur undangan (terima dengan rekening, tolak, batalkan),
@@ -124,6 +124,11 @@ describe("biaya admin dan undangan", () => {
     assert.equal((await call(b, "GET", `/circles/${cid}`)).statusCode, 200);
     assert.equal((await call(c, "POST", `/circles/${cid}/invitation/accept`, { payoutAccount: acct("Citra") })).statusCode, 200);
 
+    // Jaminan wajib disetor semua anggota sebelum dikunci.
+    const noDeposit = await call(a, "POST", `/circles/${cid}/start`, {});
+    assert.equal(noDeposit.statusCode, 409);
+    assert.equal(code(noDeposit), "DEPOSITS_PENDING");
+    await markDepositsPaid(ctx.pool, cid);
     const started = await call(a, "POST", `/circles/${cid}/start`, {});
     assert.equal(started.statusCode, 200);
     // Semua anggota punya rekening sejak bergabung.

@@ -8,6 +8,7 @@ import { enqueueCreateCircle } from "./outbox.js";
 import { syncPendingOrders } from "./gatewayStatus.js";
 import { assertNoOpenArrears, IS_ARREARS_ORDER, listArrears } from "./arrears.js";
 import { accountColumns, destinationView, toPayoutAccount, type PayoutAccountInput } from "./payoutAccount.js";
+import { depositAmountFor, listDeposits, membersWithoutDeposit, refundDeposits } from "./deposits.js";
 
 interface CircleRow {
   id: number;
@@ -24,6 +25,7 @@ interface CircleRow {
   created_at: Date;
   start_date: Date;
   draw_seed: string | null;
+  deposit_amount: number;
 }
 
 /** DATE dari pg (tengah malam waktu lokal) menjadi "YYYY-MM-DD". */
@@ -68,6 +70,8 @@ const toCircle = (r: CircleRow) => ({
   startDate: ymd(r.start_date),
   /** Seed undian urutan giliran (null sampai kelompok dimulai). */
   drawSeed: r.draw_seed,
+  /** Dana jaminan per anggota (0 = kelompok lama tanpa jaminan). */
+  depositAmount: Number(r.deposit_amount ?? 0),
 });
 
 const toPeriod = (p: PeriodRow) => ({
@@ -124,8 +128,9 @@ export async function createCircle(userId: number, input: CreateCircleInput) {
     if (sd.rows[0]!.too_far) throw new AppError("INVALID_START_DATE", "Tanggal mulai paling lambat satu tahun dari hari ini", 400);
     const { rows } = await client.query<CircleRow>(
       `INSERT INTO circles
-         (name, contribution_amount, member_count, period_days, penalty_pct, admin_fee, created_by, start_date)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+         (name, contribution_amount, member_count, period_days, penalty_pct, admin_fee, created_by, start_date,
+          deposit_amount)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
       [
         input.name,
         input.contributionAmount,
@@ -135,6 +140,7 @@ export async function createCircle(userId: number, input: CreateCircleInput) {
         config.DEFAULT_ADMIN_FEE,
         userId,
         input.startDate,
+        depositAmountFor(input.contributionAmount, input.penaltyPct),
       ],
     );
     const circle = rows[0]!;
@@ -259,6 +265,8 @@ export async function getCircleDetail(userId: number, circleId: number) {
     currentPeriod: current ? toPeriod(current) : null,
     // Tunggakan (iuran tak dibayar saat periode ditutup kuorum) dan pelunasannya, untuk transparansi.
     arrears: await listArrears(circleId, now),
+    // Dana jaminan tiap anggota (status, terpakai, pengembalian).
+    deposits: await listDeposits(circleId),
   };
 }
 
@@ -439,6 +447,49 @@ export async function cancelInvitation(userId: number, circleId: number, memberI
 }
 
 /**
+ * Pembuat mengeluarkan anggota dari kelompok draft (mis. tidak kunjung menyetor jaminan).
+ * Bila anggota sudah menyetor jaminan, kelompok harus dibatalkan agar jaminan dikembalikan.
+ */
+export async function removeDraftMember(userId: number, circleId: number, memberId: number) {
+  return withTx(async (client) => {
+    const circle = await getCircleRow(client, circleId, true);
+    if (circle.created_by !== userId) throw forbidden("Hanya pembuat kelompok yang bisa mengeluarkan anggota");
+    if (circle.status !== "draft") throw conflict("CIRCLE_STARTED", "Kelompok sudah dimulai");
+    const m = await client.query<{ user_id: number; has_deposit: boolean; has_order: boolean }>(
+      `SELECT m.user_id,
+              EXISTS (SELECT 1 FROM deposits d WHERE d.member_id = m.id) AS has_deposit,
+              EXISTS (SELECT 1 FROM orders o WHERE o.member_id = m.id) AS has_order
+         FROM members m WHERE m.id = $1 AND m.circle_id = $2 AND m.status = 'active'`,
+      [memberId, circleId],
+    );
+    const row = m.rows[0];
+    if (!row) throw notFound("Anggota");
+    if (row.user_id === userId) throw conflict("CANNOT_REMOVE_SELF", "Pembuat tidak bisa mengeluarkan dirinya; batalkan kelompok saja");
+    if (row.has_deposit || row.has_order) {
+      throw conflict(
+        "MEMBER_HAS_DEPOSIT",
+        "Anggota ini sudah memulai atau menyetor jaminan. Batalkan kelompok agar jaminannya dikembalikan.",
+      );
+    }
+    await client.query("DELETE FROM members WHERE id = $1", [memberId]);
+    return { circleId, memberId, removed: true };
+  });
+}
+
+/** Pembuat membatalkan kelompok draft. Undangan gugur dan jaminan yang sudah disetor dikembalikan. */
+export async function cancelCircle(userId: number, circleId: number) {
+  return withTx(async (client) => {
+    const circle = await getCircleRow(client, circleId, true);
+    if (circle.created_by !== userId) throw forbidden("Hanya pembuat kelompok yang bisa membatalkan kelompok");
+    if (circle.status !== "draft") throw conflict("CIRCLE_STARTED", "Kelompok yang sudah dimulai tidak bisa dibatalkan");
+    await client.query("DELETE FROM members WHERE circle_id = $1 AND status = 'invited'", [circleId]);
+    await client.query("UPDATE circles SET status = 'cancelled' WHERE id = $1", [circleId]);
+    const refunded = await refundDeposits(client, circleId);
+    return { circleId, status: "cancelled" as const, depositsRefunded: refunded };
+  });
+}
+
+/**
  * Memulai kelompok: mengunci urutan giliran dan parameter, lalu membuat semua periode.
  * Periode 1 langsung "running"; sisanya "scheduled" sampai periode sebelumnya selesai dicairkan.
  */
@@ -471,6 +522,13 @@ export async function startCircle(userId: number, circleId: number) {
       throw conflict(
         "INVITES_PENDING",
         `${pending.rows[0]!.n} undangan belum dijawab. Kelompok bisa dimulai setelah semua menerima.`,
+      );
+    }
+    const missing = await membersWithoutDeposit(client, circleId);
+    if (missing.length > 0) {
+      throw conflict(
+        "DEPOSITS_PENDING",
+        `Dana jaminan belum disetor oleh: ${missing.join(", ")}. Kelompok bisa dikunci setelah semua anggota menyetor jaminan.`,
       );
     }
     const memberRows = (
@@ -543,8 +601,8 @@ export async function circlePayments(userId: number, circleId: number) {
   // Sinkronkan order PENDING di kelompok ini dari gateway
   const pendingOrders = await pool.query<{ order_id: string }>(
     `SELECT o.order_id FROM orders o
-       JOIN periods p ON p.id = o.period_id
-      WHERE p.circle_id = $1 AND o.status = 'PENDING'`,
+       JOIN members m ON m.id = o.member_id
+      WHERE m.circle_id = $1 AND o.status = 'PENDING'`,
     [circleId],
   );
   await syncPendingOrders(pendingOrders.rows.map((o) => o.order_id));
@@ -560,26 +618,27 @@ export async function circlePayments(userId: number, circleId: number) {
       payment_type: string | null;
       paid_at: Date | null;
       created_at: Date;
-      period_no: number;
+      period_no: number | null;
       member_ref: string;
       name: string;
       chain_status: string | null;
       tx_hash: string | null;
       is_arrears: boolean;
+      kind: "contribution" | "deposit";
     }>(
       `SELECT o.order_id, o.status, o.amount, o.penalty_amount, o.admin_fee, o.gross_amount,
-              o.payment_type, o.paid_at, o.created_at, p.period_no, m.member_ref, u.name,
+              o.payment_type, o.paid_at, o.created_at, p.period_no, m.member_ref, u.name, o.kind,
               ${IS_ARREARS_ORDER("o")} AS is_arrears,
               j.status AS chain_status,
               (SELECT t.tx_hash FROM chain_transactions t
                 WHERE t.job_id = j.id AND t.status = 'confirmed'
                 ORDER BY t.id DESC LIMIT 1) AS tx_hash
          FROM orders o
-         JOIN periods p ON p.id = o.period_id
          JOIN members m ON m.id = o.member_id
          JOIN users u ON u.id = m.user_id
+         LEFT JOIN periods p ON p.id = o.period_id
          LEFT JOIN chain_jobs j ON j.order_id = o.id AND j.kind = 'recordPayment'
-        WHERE p.circle_id = $1
+        WHERE m.circle_id = $1
         ORDER BY o.created_at DESC`,
       [circleId],
     )
@@ -692,6 +751,8 @@ export async function circlePayments(userId: number, circleId: number) {
       txHash: o.tx_hash,
       // Pelunasan tunggakan periode lalu: diteruskan ke penerima periode itu, tidak dicatat ke contract.
       isArrearsPayment: o.is_arrears,
+      // Setoran dana jaminan (periodNo null), tidak dicatat ke contract.
+      isDeposit: o.kind === "deposit",
     })),
     payouts: payouts.map((p) => {
       const paid = paidOrders.filter((o) => o.period_id === p.period_id);

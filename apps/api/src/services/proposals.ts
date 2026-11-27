@@ -3,6 +3,7 @@ import { AppError, conflict, forbidden, notFound } from "../lib/errors.js";
 import { isRejected, quorumOf } from "../lib/quorum.js";
 import type { AuthUser } from "./auth.js";
 import { enqueueCastVote, enqueueExecuteProposal, enqueueProposeClosePeriod } from "./outbox.js";
+import { coverArrearsFromDeposits } from "./deposits.js";
 import { createArrearsForClosedPeriod } from "./arrears.js";
 
 /**
@@ -154,6 +155,8 @@ export async function castVote(user: AuthUser, proposalId: number, approve: bool
         await enqueueExecuteProposal(client, proposalId);
         // Anggota yang belum membayar periode ini menjadi penunggak kepada penerimanya.
         await createArrearsForClosedPeriod(client, pr.period_id);
+        // Penunggak yang gilirannya sudah lewat: tunggakannya langsung ditutup dari jaminannya.
+        await coverArrearsFromDeposits(client, pr.circle_id, { all: false });
       } else {
         // Periode sudah tidak berjalan (mis. semua iuran akhirnya lunas): keputusan tidak diperlukan.
         await client.query("UPDATE proposals SET status = 'expired', updated_at = now() WHERE id = $1", [proposalId]);

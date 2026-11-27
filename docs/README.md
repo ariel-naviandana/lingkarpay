@@ -2,6 +2,8 @@
 
 | Dokumen | Isi | Jalur |
 |---|---|---|
+| `ATURAN_BISNIS.md` | **Kondisi aplikasi sekarang**: peran, siklus kelompok, aturan uang (jaminan, tunggakan, kuorum, pencairan), kode penolakan, fitur per halaman, angka untuk business case, batasan, riwayat perubahan. Rujukan utama laporan teknis dan business case | Semua |
+| `KEAMANAN.md` | Kontrol keamanan, celah blockchain dan solusinya | Payment gateway dan smart contract |
 | `DESIGN.md` | Rancangan antarmuka v1: alur, status pesanan, skema, endpoint, outbox, payout. Kontrak antar jalur | Payment gateway |
 | `API.md` | Endpoint backend, body, respons, kode error | Payment gateway |
 | `ERD.md` | Diagram basis data (Mermaid) dan aturan integritas | Payment gateway |

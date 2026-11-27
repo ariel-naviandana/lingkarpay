@@ -86,12 +86,12 @@ export default function AppLayout() {
             <div className="mt-auto flex items-center justify-between gap-2 rounded-xl bg-cream p-3">
               <div className="flex min-w-0 items-center gap-2.5">
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand text-xs font-bold text-white">
-                  {user?.initials || "DP"}
+                  {user?.initials || "?"}
                 </span>
                 <div className="min-w-0 text-sm">
-                  <b className="block truncate">{user?.name || "Dimas Prakoso"}</b>
+                  <b className="block truncate">{user?.name || "Pengguna"}</b>
                   <div className="truncate text-xs text-stone-500">
-                    {user?.email || "dimas@contoh.id"}
+                    {user?.email || ""}
                   </div>
                 </div>
               </div>
@@ -131,12 +131,12 @@ export default function AppLayout() {
         <div className="mt-auto flex items-center justify-between gap-2 rounded-xl bg-cream p-3">
           <div className="flex min-w-0 items-center gap-2.5">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand text-xs font-bold text-white">
-              {user?.initials || "DP"}
+              {user?.initials || "?"}
             </span>
             <div className="min-w-0 text-sm">
-              <b className="block truncate">{user?.name || "Dimas Prakoso"}</b>
+              <b className="block truncate">{user?.name || "Pengguna"}</b>
               <div className="truncate text-xs text-stone-500">
-                {user?.email || "dimas@contoh.id"}
+                {user?.email || ""}
               </div>
             </div>
           </div>

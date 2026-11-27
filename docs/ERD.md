@@ -14,6 +14,8 @@ erDiagram
   periods ||--o| payouts : dicairkan
   members ||--o{ payouts : menerima
   members ||--o{ arrears : menunggak
+  members ||--o| deposits : menyetor_jaminan
+  orders ||--o| deposits : setoran
   periods ||--o{ arrears : kurang_bayar
   orders ||--o{ order_status_history : riwayat
   orders ||--o| chain_jobs : recordPayment
@@ -49,7 +51,8 @@ erDiagram
     bigint admin_fee
     date start_date "rencana mulai (WIB)"
     text draw_seed "seed undian urutan giliran"
-    text status "draft|active|completed"
+    bigint deposit_amount "jaminan per anggota"
+    text status "draft|active|completed|cancelled"
     text chain_circle_id "diisi jalur kontrak"
     int created_by FK
   }
@@ -73,7 +76,7 @@ erDiagram
     int debtor_member_id FK "penunggak"
     int creditor_member_id FK "penerima periode itu"
     bigint amount "iuran pokok"
-    text status "open|paid|deducted"
+    text status "open|paid|deducted|covered"
     bigint penalty_amount
     int settled_order_id FK "bayar susulan"
     int settled_payout_id FK "dipotong dari jatah"
@@ -89,11 +92,22 @@ erDiagram
     text status "scheduled|running|ready_payout|done"
     int recipient_member_id FK
   }
+  deposits {
+    int member_id PK
+    int circle_id FK
+    int order_id FK "setoran lewat Midtrans"
+    bigint amount
+    bigint used_amount "menutup tunggakan"
+    text status "held|refunded"
+    bigint refund_amount
+    text refund_ref "SIM-TRF-...-J<circle>-<member>"
+  }
   orders {
     int id PK
     text order_id UK "dikirim ke Midtrans"
     int member_id FK
-    int period_id FK
+    text kind "contribution|deposit"
+    int period_id FK "null untuk jaminan"
     bigint amount
     bigint penalty_amount
     bigint admin_fee

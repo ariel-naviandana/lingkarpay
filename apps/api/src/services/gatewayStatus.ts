@@ -3,6 +3,7 @@ import { withTx } from "../db/pool.js";
 import { parseRupiah } from "../lib/money.js";
 import { getTransactionStatus } from "./midtrans.js";
 import { settleArrearByOrder } from "./arrears.js";
+import { settleDepositByOrder } from "./deposits.js";
 import { enqueueRecordPayment } from "./outbox.js";
 import { mapGatewayStatus, transitionOrder } from "./orderStatus.js";
 import { refreshPeriodReadiness } from "./periods.js";
@@ -32,7 +33,7 @@ const str = (v: unknown): string | null => (typeof v === "string" && v.length > 
  */
 export async function applyGatewayStatus(
   client: PoolClient,
-  order: { id: number; gross_amount: number | string; period_id: number },
+  order: { id: number; gross_amount: number | string; period_id: number | null },
   data: GatewayData,
   source: "webhook" | "status_api",
 ): Promise<ApplyOutcome> {
@@ -59,9 +60,11 @@ export async function applyGatewayStatus(
     // Pelunasan tunggakan periode yang sudah ditutup: diteruskan ke kreditor, tidak dicatat ke contract
     // (contract v2 hanya menerima pembayaran saat periode berjalan) dan tidak mengubah status periode.
     if (await settleArrearByOrder(client, order.id)) return "applied";
+    // Setoran dana jaminan: dicatat sebagai jaminan anggota, tidak terkait periode atau contract.
+    if (await settleDepositByOrder(client, order.id)) return "applied";
     // Satu pembayaran sah, satu job on-chain (outbox). Kegagalan chain tidak membatalkan pembayaran.
     await enqueueRecordPayment(client, order.id);
-    await refreshPeriodReadiness(client, order.period_id);
+    if (order.period_id !== null) await refreshPeriodReadiness(client, order.period_id);
   }
   return "applied";
 }
@@ -89,7 +92,7 @@ export async function syncOrderFromGateway(orderId: string): Promise<SyncResult>
     return { found: true, signatureValid: false, outcome: null };
   }
   const outcome = await withTx(async (client) => {
-    const { rows } = await client.query<{ id: number; gross_amount: string | number; period_id: number }>(
+    const { rows } = await client.query<{ id: number; gross_amount: string | number; period_id: number | null }>(
       "SELECT id, gross_amount, period_id FROM orders WHERE order_id = $1",
       [orderId],
     );

@@ -215,3 +215,27 @@ export function notification(
       );
   return body;
 }
+
+/** Jaminan semua anggota aktif kelompok draft dianggap sudah disetor (langsung di database, tanpa Midtrans). */
+export async function markDepositsPaid(pool: Pool, circleId: number): Promise<void> {
+  const { rows } = await pool.query<{ id: number; deposit_amount: number }>(
+    `SELECT m.id, c.deposit_amount FROM members m JOIN circles c ON c.id = m.circle_id
+      WHERE m.circle_id = $1 AND m.status = 'active'
+        AND NOT EXISTS (SELECT 1 FROM deposits d WHERE d.member_id = m.id)`,
+    [circleId],
+  );
+  for (const r of rows) {
+    if (Number(r.deposit_amount) <= 0) continue;
+    const key = `LP-${circleId}-J-${r.id}-test`;
+    const o = await pool.query<{ id: number }>(
+      `INSERT INTO orders (order_id, member_id, period_id, kind, amount, gross_amount, status, idempotency_key,
+                           expires_at, paid_at)
+       VALUES ($1, $2, NULL, 'deposit', $3, $3, 'SETTLED', $1, now(), now()) RETURNING id`,
+      [key, r.id, r.deposit_amount],
+    );
+    await pool.query(
+      "INSERT INTO deposits (member_id, circle_id, order_id, amount) VALUES ($1, $2, $3, $4)",
+      [r.id, circleId, o.rows[0]!.id, r.deposit_amount],
+    );
+  }
+}

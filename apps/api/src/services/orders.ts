@@ -23,18 +23,19 @@ export async function getOrderForUser(user: AuthUser, orderId: string) {
     member_user_id: number;
     circle_created_by: number;
     circle_id: number;
-    period_no: number;
+    period_no: number | null;
+    kind: "contribution" | "deposit";
     chain_status: string | null;
   }>(
     `SELECT o.id, o.order_id, o.status, o.amount, o.penalty_amount, o.admin_fee, o.gross_amount,
             o.payment_type, o.gateway_ref, o.expires_at, o.paid_at, o.created_at,
             m.user_id AS member_user_id, c.created_by AS circle_created_by,
-            c.id AS circle_id, p.period_no,
+            c.id AS circle_id, p.period_no, o.kind,
             j.status AS chain_status
        FROM orders o
        JOIN members m ON m.id = o.member_id
-       JOIN periods p ON p.id = o.period_id
-       JOIN circles c ON c.id = p.circle_id
+       JOIN circles c ON c.id = m.circle_id
+       LEFT JOIN periods p ON p.id = o.period_id
        LEFT JOIN chain_jobs j ON j.order_id = o.id AND j.kind = 'recordPayment'
       WHERE o.order_id = $1`,
     [orderId],
@@ -53,6 +54,8 @@ export async function getOrderForUser(user: AuthUser, orderId: string) {
     orderId: o.order_id,
     circleId: o.circle_id,
     periodNo: o.period_no,
+    /** contribution = iuran/pelunasan tunggakan; deposit = setoran dana jaminan. */
+    kind: o.kind,
     status: o.status,
     amount: o.amount,
     penaltyAmount: o.penalty_amount,

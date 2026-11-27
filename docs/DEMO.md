@@ -7,7 +7,7 @@ Untuk progress report (di kelas, sebelum 24 November) dan presentasi (mulai 26 N
 - [ ] Server key punya izin Snap Checkout, Core API, Cancel transaction, dan Expire transaction = Write (lihat `apps/api/README.md`).
 - [ ] `apps\api\.env` berisi: `DATABASE_URL`, `MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`, `MIDTRANS_SIGNATURE_KEY`.
 - [ ] Akun untuk konsol Operator: daftar lewat aplikasi, lalu `npm run admin:grant -- email@contoh.id` (peran admin dari database).
-- [ ] `npm run migrate`, `npm run typecheck`, `npm test` (146 tes lulus). Di folder `contracts`: `npm test` (40 tes lulus).
+- [ ] `npm run migrate`, `npm run typecheck`, `npm test` (151 tes lulus). Di folder `contracts`: `npm test` (40 tes lulus).
 - [ ] Untuk demo blockchain: `apps\api\.env` satu set aktif `CHAIN_NAME=sepolia`, `CHAIN_RPC_URL`, `OPERATOR_PRIVATE_KEY`, `LINGKARPAY_ADDRESS=0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2`; `npm run chain:worker` berjalan (baris pertama lognya menunjukkan Sepolia, operator, dan alamat contract yang benar). Dengan `.env` ini, pencairan menunggu contract (`PAYOUT_CHAIN_CHECK=auto`): skrip smoke otomatis mengulang sampai contract menyatakan periode siap cair. Bila demo tanpa worker, set `PAYOUT_CHAIN_CHECK=off` lalu restart backend.
 - [ ] Nyalakan tunnel **sekali** dan jangan dimatikan: `cloudflared tunnel --url http://localhost:3001`. Salin alamatnya ke Notification URL di dashboard Midtrans (`.../midtrans-webhook`), Save, reload untuk memastikan.
 - [ ] `powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1 -Both` lolos semua.
@@ -17,7 +17,7 @@ Untuk progress report (di kelas, sebelum 24 November) dan presentasi (mulai 26 N
 ## Alur demo (sekitar 7 menit)
 1. **Konteks (30 dtk).** Arisan digital: iuran lewat payment gateway, aturan di smart contract. Bagian ini: dari klik bayar sampai status berubah dan antre ke blockchain.
 2. **Jalankan** `smoke.ps1 -Both`. Sambil berjalan, jelaskan langkah yang tampil:
-   - Buat kelompok (rekening pembuat wajib, biaya admin dari aplikasi), tanggal mulai (hari ini untuk demo), undang anggota, anggota menerima undangan dengan rekening, mulai: urutan giliran diundi server (seed tampil di "Aturan kelompok"), job `createCircle` diantre.
+   - Buat kelompok (rekening pembuat wajib, biaya admin dari aplikasi), tanggal mulai (hari ini untuk demo), undang anggota, anggota menerima undangan dengan rekening, jaminan disetor (di skrip disimulasikan lewat rute dev; di UI tombol "Setor jaminan" membuka Snap), mulai: urutan giliran diundi server (seed tampil di "Aturan kelompok"), job `createCircle` diantre.
    - Checkout: tagihan Rp11.000 = iuran Rp10.000 + biaya admin Rp1.000; checkout ulang mengembalikan order yang sama (idempoten).
 3. **Bayar di simulator** (VA BCA). Tunjukkan di log server: `webhook diproses ... outcome: applied`, dan di dashboard Midtrans: Notification history **Completed**.
 4. **Tunjukkan status** `GET /orders/<orderId>`: riwayat status PENDING → SETTLED, `chainStatus: queued` (outbox menunggu modul chain).
