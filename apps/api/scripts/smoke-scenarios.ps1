@@ -77,9 +77,10 @@ Step "Persiapan data dummy"
 $stamp = Get-Date -Format "yyyyMMddHHmmss"
 $a = Api POST "/auth/register" @{ name = "Skenario A"; email = "skn-a-$stamp@example.com"; password = "password123" }
 $b = Api POST "/auth/register" @{ name = "Skenario B"; email = "skn-b-$stamp@example.com"; password = "password123" }
-$circle = Api POST "/circles" @{ name = "Skenario $Scenario $stamp"; contributionAmount = 10000; memberCount = 2; periodDays = 7; penaltyPct = 5; adminFee = 1000 } $a.token
+$circle = Api POST "/circles" @{ name = "Skenario $Scenario $stamp"; contributionAmount = 10000; memberCount = 2; periodDays = 7; penaltyPct = 5; startDate = (Get-Date).ToString("yyyy-MM-dd"); payoutAccount = @{ channel = "BCA"; accountNumber = "1234567890"; accountName = "Skenario A" } } $a.token
 $cid = $circle.id
 $null = Api POST "/circles/$cid/members" @{ email = "skn-b-$stamp@example.com" } $a.token
+$null = Api POST "/circles/$cid/invitation/accept" @{ payoutAccount = @{ channel = "GOPAY"; accountNumber = "081234567890"; accountName = "Skenario B" } } $b.token
 $null = Api POST "/circles/$cid/start" @{} $a.token
 $d = Api GET "/circles/$cid" $null $a.token
 $body = @{ circleId = $cid; periodId = $d.currentPeriod.id; memberId = $d.myMemberId }

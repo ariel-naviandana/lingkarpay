@@ -1,109 +1,120 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Button, Card, Field, Input, Select, Badge, ErrorBox, CalendarDropdown } from "../components/ui";
-import { rupiah } from "../lib/format";
-import { api, ApiError } from "../api";
+import { PayoutAccountFields } from "../components/PayoutAccountFields";
+import { accountLabel, formatYmd, rupiah, todayWib } from "../lib/format";
+import { api, ApiError, type PayoutAccountInput } from "../api";
+import { useAsync } from "../hooks/useAsync";
+import { PAYOUT_CHANNELS } from "../types";
 
-const steps = ["Aturan kelompok", "Undang anggota", "Tinjau dan simpan"];
+const steps = ["Aturan kelompok", "Rekening dan undangan", "Tinjau dan simpan"];
 
 export default function CreateGroupPage() {
   const [step, setStep] = useState(0);
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  // Biaya admin ditetapkan aplikasi, bukan oleh pembuat kelompok.
+  const { data: cfg } = useAsync(() => api.publicConfig(), []);
+  const adminFee = cfg?.adminFee ?? null;
 
   const [f, setF] = useState({
-    name: "Arisan Komunitas UMKM Malang",
-    members: 6,
-    fee: 300000,
+    name: "",
+    members: 3,
+    fee: 100000,
     periodType: "Bulanan" as "Bulanan" | "Mingguan",
-    startDate: todayStr,
-    late: 2,
-    cap: 10,
-    adminFee: 2500,
+    late: 5,
+    startDate: todayWib(),
   });
-
+  const [account, setAccount] = useState<PayoutAccountInput>({ channel: "BCA", accountNumber: "", accountName: "" });
   const [inviteEmails, setInviteEmails] = useState("");
 
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const val = e.target.value;
     setF((prev) => ({
       ...prev,
-      [k]:
-        k === "name" || k === "periodType" || k === "startDate"
-          ? val
-          : Number(val.replace(/\D/g, "")),
+      [k]: k === "name" || k === "periodType" || k === "startDate" ? val : Number(val.replace(/\D/g, "")),
     }));
   };
+
+  const periodDays = f.periodType === "Mingguan" ? 7 : 30;
+  const channelLabel = PAYOUT_CHANNELS.find((c) => c.code === account.channel)?.label ?? account.channel;
+  const digits = account.accountNumber.replace(/[\s-]/g, "");
 
   const handleNext = async () => {
     setError(null);
     if (step === 0) {
-      if (!f.name.trim()) {
-        setError("Nama kelompok tidak boleh kosong.");
-        return;
-      }
-      if (f.members < 2 || f.members > 50) {
-        setError("Jumlah anggota harus antara 2 hingga 50 orang.");
-        return;
-      }
-      if (f.fee < 1000) {
-        setError("Iuran minimal Rp1.000 per periode.");
-        return;
-      }
-      if (!f.startDate) {
-        setError("Tanggal mulai harus dipilih.");
-        return;
-      }
+      if (!f.name.trim()) return setError("Nama kelompok tidak boleh kosong.");
+      if (f.members < 2 || f.members > 50) return setError("Jumlah anggota harus antara 2 hingga 50 orang.");
+      if (f.fee < 1000) return setError("Iuran minimal Rp1.000 per periode.");
+      if (f.late > 100) return setError("Penalti maksimal 100%.");
+      if (!f.startDate || f.startDate < todayWib()) return setError("Tanggal mulai tidak boleh sebelum hari ini.");
       setStep(1);
     } else if (step === 1) {
+      if (!digits || !account.accountName.trim()) {
+        return setError("Isi rekening pencairan Anda: sebagai anggota, Anda juga akan menerima giliran.");
+      }
       setStep(2);
     } else {
-      // Step 2: Final submission
       setBusy(true);
-      setError(null);
       try {
-        const periodDays = f.periodType === "Mingguan" ? 7 : 30;
         const newCircle = await api.createCircle({
           name: f.name.trim(),
           contributionAmount: f.fee,
           memberCount: f.members,
           periodDays,
           penaltyPct: f.late,
-          adminFee: f.adminFee,
+          startDate: f.startDate,
+          payoutAccount: account,
         });
 
-        // Undang anggota yang diinput jika ada
         const emailList = inviteEmails
           .split(",")
           .map((e) => e.trim())
           .filter((e) => e.length > 0 && e.includes("@"));
-
+        const failed: string[] = [];
         for (const email of emailList) {
           try {
             await api.addMember(newCircle.id, email);
           } catch {
-            // Abaikan jika email belum terdaftar, nanti bisa diundang lagi dari halaman detail
+            failed.push(email);
           }
         }
-
-        // Langsung arahkan ke Dashboard agar kelompok baru langsung muncul
-        navigate("/dashboard");
+        if (failed.length > 0) {
+          setNotice(`Kelompok dibuat. Undangan gagal untuk: ${failed.join(", ")} (belum terdaftar?). Undang ulang dari halaman kelompok.`);
+          setTimeout(() => navigate(`/groups/${newCircle.id}`), 2500);
+        } else {
+          navigate(`/groups/${newCircle.id}`);
+        }
       } catch (err: unknown) {
         setError(
           err instanceof ApiError
             ? err.message
             : err instanceof Error
             ? err.message
-            : "Gagal membuat kelompok baru. Pastikan server API berjalan."
+            : "Gagal membuat kelompok baru. Pastikan server API berjalan.",
         );
       } finally {
         setBusy(false);
       }
     }
   };
+
+  const review: [string, string][] = [
+    ["Nama kelompok", f.name],
+    ["Peran Anda", "Pengelola (anggota pertama)"],
+    ["Jumlah anggota", `${f.members} orang`],
+    ["Iuran per periode", rupiah(f.fee)],
+    ["Periode setoran", `${f.periodType} (${periodDays} hari)`],
+    ["Tanggal mulai", `${formatYmd(f.startDate)} (paling cepat dikunci pada tanggal ini)`],
+    ["Urutan giliran", "Diundi acak oleh sistem saat kelompok dikunci"],
+    ["Penalti keterlambatan", f.late > 0 ? `${f.late}% dari iuran, sekali bila lewat tenggat` : "Tidak ada"],
+    ["Biaya admin per pembayaran", adminFee !== null ? `${rupiah(adminFee)} (ditetapkan aplikasi)` : "–"],
+    ["Kuorum keputusan", `${Math.floor(f.members / 2) + 1} dari ${f.members} anggota`],
+    ["Rekening pencairan Anda", digits ? accountLabel({ channelLabel, last4: digits.slice(-4), accountName: account.accountName }) : "–"],
+  ];
 
   return (
     <div className="w-full space-y-6">
@@ -119,12 +130,11 @@ export default function CreateGroupPage() {
             Anda otomatis menjadi pembuat dan anggota pertama kelompok ini.
           </p>
         </div>
-        <Badge tone="purple">Smart Contract Ready</Badge>
+        <Badge tone="purple">Aturan dikunci di smart contract</Badge>
       </header>
 
-      {error && (
-        <ErrorBox message={error} />
-      )}
+      {error && <ErrorBox message={error} />}
+      {notice && <p className="rounded-xl bg-amber-soft p-3 text-sm text-amber-900">{notice}</p>}
 
       <ol className="grid gap-2 sm:gap-3 sm:grid-cols-3">
         {steps.map((s, i) => (
@@ -164,69 +174,59 @@ export default function CreateGroupPage() {
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Jumlah anggota" hint="2 hingga 50 anggota">
+                <Field label="Jumlah anggota" hint="2 hingga 50 anggota, termasuk Anda">
                   <Input value={f.members} onChange={set("members")} type="number" min={2} max={50} />
                 </Field>
                 <Field label="Iuran per periode (Rp)" hint="Minimal Rp1.000">
                   <Input value={f.fee.toLocaleString("id-ID")} onChange={set("fee")} />
                 </Field>
-                <Field label="Periode setoran">
+                <Field label="Periode setoran" hint="Tenggat periode pertama dihitung dari saat kelompok dikunci">
                   <Select value={f.periodType} onChange={set("periodType")}>
                     <option value="Bulanan">Bulanan (30 hari)</option>
                     <option value="Mingguan">Mingguan (7 hari)</option>
                   </Select>
                 </Field>
-                <Field label="Tanggal mulai" hint="Pilih tanggal mulai periode pertama melalui kalender">
-                  <CalendarDropdown
-                    value={f.startDate}
-                    minDate={todayStr}
-                    onChange={(dateStr) => setF((prev) => ({ ...prev, startDate: dateStr }))}
-                  />
-                </Field>
-                <Field label="Biaya admin (Rp)" hint="Biaya transaksi platform">
-                  <Input value={f.adminFee.toLocaleString("id-ID")} onChange={set("adminFee")} />
-                </Field>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field
-                  label="Penalti keterlambatan per hari (%)"
-                  hint="Dihitung otomatis per hari keterlambatan"
-                >
+                <Field label="Penalti keterlambatan (%)" hint="Persentase dari iuran, dikenakan sekali bila membayar lewat tenggat">
                   <Input value={f.late} onChange={set("late")} type="number" min={0} max={100} />
                 </Field>
-                <Field label="Batas maksimum penalti (%)" hint="Ilustrasi aturan batas">
-                  <Input value={f.cap} onChange={set("cap")} type="number" min={0} max={100} />
+                <Field
+                  label="Tanggal mulai"
+                  hint="Kelompok baru bisa dikunci pada atau sesudah tanggal ini, dan setelah semua undangan diterima"
+                >
+                  <CalendarDropdown
+                    value={f.startDate}
+                    minDate={todayWib()}
+                    onChange={(d) => setF((prev) => ({ ...prev, startDate: d }))}
+                  />
                 </Field>
               </div>
 
-              <Field label="Kuorum keputusan darurat">
-                <Select disabled>
-                  <option>
-                    Mayoritas mutlak ({Math.floor(f.members / 2) + 1} dari {f.members} anggota)
-                  </option>
-                </Select>
-              </Field>
+              <div className="rounded-xl border border-sand bg-cream/60 p-3 text-xs sm:text-sm text-stone-600">
+                Biaya admin per pembayaran:{" "}
+                <b className="text-ink">{adminFee !== null ? rupiah(adminFee) : "–"}</b>, ditetapkan aplikasi (pendapatan
+                platform, tidak ikut dicairkan). Kuorum keputusan darurat: mayoritas mutlak ({Math.floor(f.members / 2) + 1} dari {f.members}).
+              </div>
             </>
           )}
 
           {step === 1 && (
-            <div className="space-y-4">
-              <div className="rounded-xl bg-mint/50 border border-brand/20 p-4 text-xs sm:text-sm text-brand space-y-1">
-                <b>✓ Anda otomatis terdaftar sebagai Anggota #1 (Pengelola)</b>
-                <p className="text-stone-600">
-                  Anda tidak perlu memasukkan email Anda sendiri. Anda dapat mengundang anggota lainnya ({f.members - 1} orang) sekarang atau nanti melalui halaman kelompok.
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <h3 className="text-sm font-bold">Rekening pencairan Anda</h3>
+                <p className="text-xs text-stone-500">
+                  Anda juga anggota yang mendapat giliran. Dana giliran Anda ditransfer ke rekening ini.
                 </p>
+                <PayoutAccountFields value={account} onChange={setAccount} disabled={busy} />
               </div>
 
               <Field
                 label="Email anggota yang diundang (opsional)"
-                hint="Pisahkan beberapa email dengan tanda koma (,). Contoh: user1@email.com, user2@email.com"
+                hint={`Pisahkan dengan koma. Penerima harus sudah terdaftar; mereka menerima atau menolak undangan dari dashboard dan wajib mengisi rekening saat menerima. Undang ${f.members - 1} orang, sekarang atau nanti.`}
               >
                 <textarea
                   className="w-full rounded-xl border border-sand bg-white p-3 text-sm focus:border-brand focus:outline-none"
-                  rows={4}
-                  placeholder="andi@gmail.com, rina@yahoo.com"
+                  rows={3}
+                  placeholder="andi@contoh.id, rina@contoh.id"
                   value={inviteEmails}
                   onChange={(e) => setInviteEmails(e.target.value)}
                 />
@@ -237,45 +237,17 @@ export default function CreateGroupPage() {
           {step === 2 && (
             <div className="space-y-4">
               <p className="text-xs sm:text-sm text-stone-600">
-                Periksa kembali aturan kelompok Anda di bawah ini sebelum membuat kelompok. Setelah dibuat, kelompok akan berstatus <b>Draft</b> sampai semua anggota bergabung dan Anda menguncinya di smart contract.
+                Kelompok berstatus <b>Draft</b> sampai semua undangan diterima dan tanggal mulai tiba. Saat Anda menguncinya,
+                sistem mengundi urutan giliran secara acak (seed undian ditampilkan agar bisa diperiksa ulang), lalu aturan
+                dan urutan dicatat di smart contract dan tidak bisa diubah.
               </p>
               <div className="rounded-xl border border-sand bg-cream/60 p-4 text-xs sm:text-sm space-y-2 text-stone-700">
-                <div className="flex justify-between">
-                  <span>Nama Kelompok:</span>
-                  <b>{f.name}</b>
-                </div>
-                <div className="flex justify-between">
-                  <span>Peran Anda:</span>
-                  <b className="text-brand">Pengelola (Anggota #1)</b>
-                </div>
-                <div className="flex justify-between">
-                  <span>Kapasitas Anggota:</span>
-                  <b>{f.members} orang</b>
-                </div>
-                <div className="flex justify-between">
-                  <span>Iuran per Periode:</span>
-                  <b>{rupiah(f.fee)}</b>
-                </div>
-                <div className="flex justify-between">
-                  <span>Periode Setoran:</span>
-                  <b>{f.periodType} ({f.periodType === "Mingguan" ? "7" : "30"} hari)</b>
-                </div>
-                <div className="flex justify-between">
-                  <span>Tanggal Mulai:</span>
-                  <b>{new Date(f.startDate + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</b>
-                </div>
-                <div className="flex justify-between">
-                  <span>Penalti Keterlambatan:</span>
-                  <b>{f.late}% per hari</b>
-                </div>
-                <div className="flex justify-between">
-                  <span>Biaya Admin:</span>
-                  <b>{rupiah(f.adminFee)}</b>
-                </div>
-                <div className="flex justify-between">
-                  <span>Kuorum Usulan:</span>
-                  <b>{Math.floor(f.members / 2) + 1} dari {f.members} suara</b>
-                </div>
+                {review.map(([a, b]) => (
+                  <div key={a} className="flex justify-between gap-3">
+                    <span>{a}</span>
+                    <b className="text-right">{b}</b>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -289,15 +261,11 @@ export default function CreateGroupPage() {
             >
               Kembali
             </Button>
-            <Button
-              onClick={() => void handleNext()}
-              disabled={busy}
-              className="w-full sm:w-auto"
-            >
+            <Button onClick={() => void handleNext()} disabled={busy} className="w-full sm:w-auto">
               {busy
                 ? "Membuat kelompok..."
                 : step === 0
-                ? "Lanjut: undang anggota"
+                ? "Lanjut: rekening dan undangan"
                 : step === 1
                 ? "Lanjut: tinjau"
                 : "Buat kelompok sekarang"}
@@ -305,20 +273,17 @@ export default function CreateGroupPage() {
           </div>
         </Card>
 
-        {/* Ringkasan Samping */}
         <Card className="h-fit space-y-3 text-sm">
-          <p className="font-semibold text-stone-500">Perkiraan per periode</p>
-          <p className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-            {rupiah(f.members * f.fee)}
-          </p>
+          <p className="font-semibold text-stone-500">Dana per giliran</p>
+          <p className="text-3xl sm:text-4xl font-extrabold tracking-tight">{rupiah(f.members * f.fee)}</p>
           <p className="text-xs sm:text-sm text-stone-500">
             {f.members} anggota × {rupiah(f.fee)}, dicairkan ke satu anggota bergiliran.
           </p>
           {[
-            ["Tanggal mulai", new Date(f.startDate + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })],
-            ["Durasi kelompok", `${f.members} periode (${f.periodType === "Mingguan" ? f.members * 7 : f.members * 30} hari)`],
-            ["Biaya admin per pembayaran", rupiah(f.adminFee)],
-            ["Status awal", "Draft (Menunggu anggota)"],
+            ["Tanggal mulai", formatYmd(f.startDate)],
+            ["Durasi kelompok", `${f.members} periode (${f.members * periodDays} hari)`],
+            ["Biaya admin per pembayaran", adminFee !== null ? rupiah(adminFee) : "–"],
+            ["Status awal", "Draft (menunggu anggota)"],
           ].map(([a, b]) => (
             <div key={a} className="flex justify-between border-t border-sand pt-3 text-xs sm:text-sm">
               <span className="text-stone-500">{a}</span>
@@ -326,7 +291,8 @@ export default function CreateGroupPage() {
             </div>
           ))}
           <p className="text-xs text-stone-500">
-            Setelah kelompok dimulai, giliran ditentukan dan aturan terkunci secara terdesentralisasi.
+            Bila ada anggota tidak membayar dan periode ditutup lewat kuorum, iurannya menjadi tunggakan yang dipotong dari
+            jatahnya saat gilirannya tiba, lalu diteruskan ke penerima yang kurang.
           </p>
         </Card>
       </div>

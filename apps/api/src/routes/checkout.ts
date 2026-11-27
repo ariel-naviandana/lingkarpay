@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { config } from "../config.js";
 import { requireUser } from "../lib/auth.js";
-import { createCheckout } from "../services/checkout.js";
+import { createArrearsCheckout, createCheckout } from "../services/checkout.js";
 import { syncOrderFromGateway } from "../services/gatewayStatus.js";
 import { cancelOrder, expireOrder, getOrderForUser } from "../services/orders.js";
 
@@ -18,11 +18,23 @@ export async function checkoutRoutes(app: FastifyInstance) {
     environment: "sandbox",
     midtransClientKey: config.MIDTRANS_CLIENT_KEY,
     snapJsUrl: "https://app.sandbox.midtrans.com/snap/snap.js",
+    // Biaya admin per iuran ditetapkan aplikasi (pendapatan platform), bukan oleh pembuat kelompok.
+    adminFee: config.DEFAULT_ADMIN_FEE,
+    // Alat simulasi sandbox (mis. mempercepat jatuh tempo untuk demo kuorum) aktif?
+    devTools: config.DEV_TOOLS && config.NODE_ENV !== "production",
   }));
 
   app.post("/checkout", async (req, reply) => {
     const user = await requireUser(req);
     const result = await createCheckout(user, checkoutBody.parse(req.body));
+    return reply.code(result.reused ? 200 : 201).send(result);
+  });
+
+  // Pelunasan tunggakan oleh penunggaknya sendiri (iuran + penalti + biaya admin). Respons sama dengan /checkout.
+  app.post("/arrears/:id/checkout", async (req, reply) => {
+    const user = await requireUser(req);
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const result = await createArrearsCheckout(user, id);
     return reply.code(result.reused ? 200 : 201).send(result);
   });
 

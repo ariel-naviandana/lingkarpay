@@ -50,6 +50,10 @@ export interface Circle {
   joinedCount?: number;
   startedAt?: string | null;
   createdAt?: string;
+  /** Tanggal mulai rencana (YYYY-MM-DD, WIB). Kelompok baru bisa dikunci pada/sesudah tanggal ini. */
+  startDate?: string;
+  /** Seed undian urutan giliran; terisi setelah kelompok dimulai. */
+  drawSeed?: string | null;
 }
 
 /** Kelompok pada daftar admin: ditambah nama pembuat (tanpa email). */
@@ -65,12 +69,43 @@ export interface Period {
   recipientMemberId: number | null;
 }
 
+/** Rekening pencairan tersamar (data dummy). Nomor lengkap tidak disimpan server. */
+export interface PayoutAccount {
+  channel: string;
+  channelLabel: string;
+  kind: "bank" | "ewallet";
+  last4: string;
+  accountName: string;
+  updatedAt?: string | null;
+}
+
+/** Kanal tujuan pencairan; sama dengan daftar di backend (services/payoutAccount.ts). */
+export const PAYOUT_CHANNELS: { code: string; label: string; kind: "bank" | "ewallet" }[] = [
+  { code: "BCA", label: "BCA", kind: "bank" },
+  { code: "BNI", label: "BNI", kind: "bank" },
+  { code: "BRI", label: "BRI", kind: "bank" },
+  { code: "MANDIRI", label: "Mandiri", kind: "bank" },
+  { code: "BSI", label: "BSI", kind: "bank" },
+  { code: "CIMB", label: "CIMB Niaga", kind: "bank" },
+  { code: "PERMATA", label: "Permata", kind: "bank" },
+  { code: "GOPAY", label: "GoPay", kind: "ewallet" },
+  { code: "OVO", label: "OVO", kind: "ewallet" },
+  { code: "DANA", label: "DANA", kind: "ewallet" },
+  { code: "SHOPEEPAY", label: "ShopeePay", kind: "ewallet" },
+];
+
 export interface MemberView {
   memberId: number;
   memberRef: string;
   name: string;
   turnOrder: number | null;
   isMe: boolean;
+  /** invited = diundang, belum menerima; active = anggota. */
+  status?: "invited" | "active";
+  /** Sudah mengisi rekening pencairan (terlihat oleh semua anggota). */
+  hasPayoutAccount?: boolean;
+  /** Rekening tersamar; hanya untuk pemiliknya dan pembuat kelompok, selain itu null. */
+  payoutAccount?: PayoutAccount | null;
   currentPayment: {
     status: OrderStatus | null;
     paid: boolean;
@@ -85,6 +120,34 @@ export interface CircleDetail {
   members: MemberView[];
   periods: Period[];
   currentPeriod: Period | null;
+  /** Tunggakan kelompok ini (terbuka untuk semua anggota). */
+  arrears?: Arrear[];
+}
+
+/** Iuran yang tidak dibayar saat periode ditutup kuorum, dan pelunasannya. */
+export interface Arrear {
+  id: number;
+  periodNo: number;
+  debtorMemberId: number;
+  debtorName: string;
+  debtorRef: string;
+  creditorMemberId: number;
+  creditorName: string;
+  amount: number;
+  penaltyAmount: number;
+  totalDue: number;
+  status: "open" | "paid" | "deducted";
+  settledAt: string | null;
+  settledPayoutPeriodNo: number | null;
+  forward: { amount: number; destination: PayoutAccount | null; transferRef: string | null; forwardedAt: string | null } | null;
+}
+
+/** Undangan bergabung ke kelompok. */
+export interface Invitation {
+  circle: Circle;
+  memberId: number;
+  creatorName: string;
+  invitedAt: string | null;
 }
 
 export interface CheckoutResult {
@@ -111,6 +174,10 @@ export interface PublicConfig {
   environment: string;
   midtransClientKey: string;
   snapJsUrl: string;
+  /** Biaya admin per iuran, ditetapkan aplikasi. */
+  adminFee: number;
+  /** Alat simulasi sandbox (mis. lewati jatuh tempo) aktif di server. */
+  devTools?: boolean;
 }
 
 export interface CirclePaymentItem {
@@ -128,6 +195,8 @@ export interface CirclePaymentItem {
   createdAt: string;
   chainStatus: string | null;
   txHash: string | null;
+  /** Pelunasan tunggakan periode lalu (diteruskan ke penerima periode itu, tidak dicatat ke contract). */
+  isArrearsPayment?: boolean;
 }
 
 export interface CirclePayoutItem {
@@ -146,6 +215,19 @@ export interface CirclePayoutItem {
   recipientName?: string;
   recipientAccountHash?: string | null; // hash rekening (nomor asli tidak disimpan)
   irisReferenceNo?: string | null;
+  /** Tujuan transfer (disalin saat pencairan) dan nomor referensi transfernya. */
+  destination?: PayoutAccount | null;
+  transferRef?: string | null;
+  transferredAt?: string | null;
+  /** Tunggakan penerima (iuran + penalti) yang dipotong dari jatahnya dan diteruskan ke kreditornya. */
+  arrearsDeducted?: number;
+  deductedArrears?: {
+    periodNo: number;
+    creditorName: string;
+    amount: number;
+    penaltyAmount: number;
+    forward: Arrear["forward"];
+  }[];
   updatedAt?: string;
   contributionTotal?: number;
   penaltyTotal?: number;

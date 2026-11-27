@@ -47,6 +47,25 @@ function Check([string]$Name, [bool]$Ok, [string]$Detail = "") {
   Write-Host ("  [{0}] {1} {2}" -f $label, $Name, $Detail) -ForegroundColor $color
 }
 
+# Pencairan menunggu contract (gerbang PAYOUT_CHAIN_CHECK): diulang selama CHAIN_NOT_READY.
+# Worker chain harus berjalan; tanpa worker, set PAYOUT_CHAIN_CHECK=off di apps\api\.env.
+function Payout-WhenChainReady([string]$Path, $Body, [string]$Token, [int]$Minutes = 8) {
+  $deadline = (Get-Date).AddMinutes($Minutes)
+  $announced = $false
+  while ($true) {
+    try { return Api POST $Path $Body $Token }
+    catch {
+      $m = $_.Exception.Message
+      if (($m -notlike "*CHAIN_NOT_READY*") -or ((Get-Date) -gt $deadline)) { throw }
+      if (-not $announced) {
+        Write-Host "  menunggu contract menyatakan periode siap cair (worker chain harus berjalan)..."
+        $announced = $true
+      }
+      Start-Sleep -Seconds 10
+    }
+  }
+}
+
 function Expect-ApiError([string]$Name, [string]$Code, [scriptblock]$Action) {
   try {
     & $Action | Out-Null
@@ -100,11 +119,16 @@ $me = Api GET "/auth/me" $null $tokA
 Check "auth/me" ($me.user.email -eq "smoke-a-$stamp@example.com")
 
 Step "3. Buat kelompok, tambah anggota, mulai"
-$circle = Api POST "/circles" @{ name = "Smoke $stamp"; contributionAmount = 10000; memberCount = 2; periodDays = 7; penaltyPct = 5; adminFee = 1000 } $tokA
+# Biaya admin ditetapkan aplikasi (tidak dikirim); rekening pencairan pembuat wajib.
+$circle = Api POST "/circles" @{ name = "Smoke $stamp"; contributionAmount = 10000; memberCount = 2; periodDays = 7; penaltyPct = 5; startDate = (Get-Date).ToString("yyyy-MM-dd"); payoutAccount = @{ channel = "BCA"; accountNumber = "1234567890"; accountName = "Smoke A" } } $tokA
 $cid = $circle.id
 Check "buat kelompok" ($circle.status -eq "draft") "id=$cid"
+Check "biaya admin dari aplikasi" ($circle.adminFee -eq 1000) "adminFee=$($circle.adminFee)"
 Expect-ApiError "mulai sebelum lengkap ditolak" "CIRCLE_NOT_FULL" { Api POST "/circles/$cid/start" @{} $tokA }
-$null = Api POST "/circles/$cid/members" @{ email = "smoke-b-$stamp@example.com" } $tokA
+$inv = Api POST "/circles/$cid/members" @{ email = "smoke-b-$stamp@example.com" } $tokA
+Check "anggota B diundang" ($inv.status -eq "invited")
+Expect-ApiError "mulai sebelum undangan diterima ditolak" "INVITES_PENDING" { Api POST "/circles/$cid/start" @{} $tokA }
+$null = Api POST "/circles/$cid/invitation/accept" @{ payoutAccount = @{ channel = "GOPAY"; accountNumber = "081234567890"; accountName = "Smoke B" } } $tokB
 $started = Api POST "/circles/$cid/start" @{} $tokA
 Check "kelompok dimulai, 2 periode" (($started.circle.status -eq "active") -and (@($started.periods).Count -eq 2))
 
@@ -114,6 +138,10 @@ $periodId = $detailA.currentPeriod.id
 $memberA = $detailA.myMemberId
 $memberB = $detailB.myMemberId
 Check "periode 1 berjalan" ($detailA.currentPeriod.status -eq "running") "periodId=$periodId"
+# Rekening pencairan dummy diisi masing-masing anggota (server hanya menyimpan 4 digit terakhir dan hash).
+$acctA = Api PUT "/circles/$cid/payout-account" @{ channel = "BCA"; accountNumber = "1234567890"; accountName = "Smoke A" } $tokA
+$null = Api PUT "/circles/$cid/payout-account" @{ channel = "GOPAY"; accountNumber = "081234567890"; accountName = "Smoke B" } $tokB
+Check "rekening pencairan dummy tersimpan tersamar" (($acctA.payoutAccount.channel -eq "BCA") -and ($acctA.payoutAccount.last4 -eq "7890")) ("BCA ****" + $acctA.payoutAccount.last4)
 
 Step "4. Checkout (idempotensi dan otorisasi)"
 $bodyA = @{ circleId = $cid; periodId = $periodId; memberId = $memberA }
@@ -157,11 +185,12 @@ if ($Both -and ($null -ne $oA) -and ($PaidStatuses -contains $oA.status)) {
     Check "periode 1 siap cair" ($d.currentPeriod.status -eq "ready_payout")
     if ($Iris) {
       if (-not $IrisAccount) { throw "Parameter -IrisAccount wajib untuk -Iris (nomor rekening dummy dari sandbox Iris)." }
-      $po = Api POST "/payouts/iris" @{ periodId = $periodId; beneficiary = @{ name = "Smoke Dummy"; account = $IrisAccount; bank = $IrisBank; email = "dummy@example.com" } } $tokA
+      $po = Payout-WhenChainReady "/payouts/iris" @{ periodId = $periodId; beneficiary = @{ name = "Smoke Dummy"; account = $IrisAccount; bank = $IrisBank; email = "dummy@example.com" } } $tokA
       Check "payout Iris dibuat dan disetujui" ($po.status -eq "APPROVED") "ref=$($po.irisReferenceNo)"
     } else {
-      $po = Api POST "/payouts/simulate" @{ periodId = $periodId } $tokA
+      $po = Payout-WhenChainReady "/payouts/simulate" @{ periodId = $periodId } $tokA
       Check "payout simulasi dibuat" ($po.status -eq "SIMULATED") "id=$($po.id)"
+      Check "tujuan transfer simulasi tercatat" (($po.destination.last4 -eq "7890") -and ($po.transferRef -like "SIM-TRF-*")) ("ke " + $po.destination.channelLabel + " ****" + $po.destination.last4 + " ref=" + $po.transferRef)
     }
     Check "dana pencairan = iuran tanpa biaya admin" ($po.amount -eq 20000) "amount=$($po.amount)"
     Expect-ApiError "payout dua kali ditolak" "PAYOUT_EXISTS" { Api POST "/payouts/simulate" @{ periodId = $periodId } $tokA }

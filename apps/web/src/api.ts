@@ -5,13 +5,22 @@ import type {
   CircleDetail,
   CirclePaymentsResult,
   CheckoutResult,
+  Invitation,
   OrderView,
+  PayoutAccount,
   Proposal,
   PublicConfig,
   ReconciliationReport,
   User,
   Period,
 } from "./types";
+
+/** Rekening pencairan yang dikirim ke server (data dummy). */
+export interface PayoutAccountInput {
+  channel: string;
+  accountNumber: string;
+  accountName: string;
+}
 
 // Lewat proxy Vite ("/api" -> backend). Ganti dengan VITE_API_URL bila perlu.
 const BASE: string = import.meta.env.VITE_API_URL ?? "/api";
@@ -92,16 +101,37 @@ export const api = {
     memberCount: number;
     periodDays: number;
     penaltyPct: number;
-    adminFee?: number;
+    /** Tanggal mulai rencana (YYYY-MM-DD, WIB), tidak boleh sebelum hari ini. */
+    startDate: string;
+    /** Rekening pencairan pembuat (wajib). Biaya admin tidak dikirim: ditetapkan aplikasi. */
+    payoutAccount: PayoutAccountInput;
   }) => request<Circle>("POST", "/circles", body),
   addMember: (id: number, email: string) =>
-    request<{ memberId: number; memberRef: string; name: string }>(
+    request<{ memberId: number; memberRef: string; name: string; status: "invited" }>(
       "POST",
       `/circles/${id}/members`,
       { email },
     ),
-  startCircle: (id: number, order?: number[]) =>
-    request<{ circle: Circle; periods: Period[] }>("POST", `/circles/${id}/start`, { order }),
+  // Undangan
+  invitations: () => request<{ invitations: Invitation[] }>("GET", "/invitations"),
+  acceptInvitation: (circleId: number, payoutAccount: PayoutAccountInput) =>
+    request<{ circleId: number; memberId: number; status: "active" }>(
+      "POST",
+      `/circles/${circleId}/invitation/accept`,
+      { payoutAccount },
+    ),
+  declineInvitation: (circleId: number) =>
+    request<{ circleId: number; declined: true }>("POST", `/circles/${circleId}/invitation/decline`),
+  cancelInvitation: (circleId: number, memberId: number) =>
+    request<{ cancelled: true }>("DELETE", `/circles/${circleId}/invitations/${memberId}`),
+  // Pelunasan tunggakan oleh penunggaknya sendiri
+  arrearsCheckout: (arrearId: number) => request<CheckoutResult>("POST", `/arrears/${arrearId}/checkout`),
+  // Urutan giliran diundi server saat kelompok dikunci.
+  startCircle: (id: number) =>
+    request<{ circle: Circle; periods: Period[] }>("POST", `/circles/${id}/start`, {}),
+  // Sandbox saja: tandai periode berjalan sudah lewat jatuh tempo (untuk demo kuorum).
+  devMakeOverdue: (periodId: number) =>
+    request<{ periodId: number; overdue: true; simulated: true }>("POST", `/dev/periods/${periodId}/make-overdue`),
   periods: (id: number) =>
     request<{ periods: Period[] }>("GET", `/circles/${id}/periods`),
   payments: (id: number) =>
@@ -131,11 +161,18 @@ export const api = {
 
   // Payouts & Operator
   simulatePayout: (periodId: number) =>
-    request<{ id: number; status: string; mode: string; amount: number; payoutRefHash: string }>(
-      "POST",
-      "/payouts/simulate",
-      { periodId },
-    ),
+    request<{
+      id: number;
+      status: string;
+      mode: string;
+      amount: number;
+      payoutRefHash: string;
+      destination: PayoutAccount | null;
+      transferRef: string | null;
+      transferredAt: string | null;
+    }>("POST", "/payouts/simulate", { periodId }),
+  setPayoutAccount: (circleId: number, body: PayoutAccountInput) =>
+    request<{ payoutAccount: PayoutAccount }>("PUT", `/circles/${circleId}/payout-account`, body),
   reconciliation: (circleId: number, live = false) =>
     request<ReconciliationReport>(
       "GET",

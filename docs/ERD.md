@@ -13,6 +13,8 @@ erDiagram
   periods ||--o{ orders : ditagih
   periods ||--o| payouts : dicairkan
   members ||--o{ payouts : menerima
+  members ||--o{ arrears : menunggak
+  periods ||--o{ arrears : kurang_bayar
   orders ||--o{ order_status_history : riwayat
   orders ||--o| chain_jobs : recordPayment
   circles ||--o| chain_jobs : createCircle
@@ -45,6 +47,8 @@ erDiagram
     int period_days
     int penalty_pct
     bigint admin_fee
+    date start_date "rencana mulai (WIB)"
+    text draw_seed "seed undian urutan giliran"
     text status "draft|active|completed"
     text chain_circle_id "diisi jalur kontrak"
     int created_by FK
@@ -55,12 +59,33 @@ erDiagram
     int user_id FK
     text member_ref UK "ID samaran on-chain"
     int turn_order "terkunci saat start"
+    text payout_channel "bank/e-wallet tujuan"
+    text payout_account_last4 "4 digit terakhir"
+    text payout_account_name
+    text payout_account_hash "Keccak-256, nomor lengkap tidak disimpan"
+    text status "invited|active"
+    timestamptz invited_at
+  }
+  arrears {
+    int id PK
+    int circle_id FK
+    int period_id FK "periode yang kurang"
+    int debtor_member_id FK "penunggak"
+    int creditor_member_id FK "penerima periode itu"
+    bigint amount "iuran pokok"
+    text status "open|paid|deducted"
+    bigint penalty_amount
+    int settled_order_id FK "bayar susulan"
+    int settled_payout_id FK "dipotong dari jatah"
+    bigint forward_amount
+    text forward_ref "SIM-TRF-...-A<id>"
   }
   periods {
     int id PK
     int circle_id FK
     int period_no
-    timestamptz due_date
+    timestamptz due_date "digeser bila dibuka terlambat"
+    timestamptz opened_at
     text status "scheduled|running|ready_payout|done"
     int recipient_member_id FK
   }
@@ -103,6 +128,10 @@ erDiagram
     text status
     text recipient_account_hash
     text payout_ref_hash
+    text destination_channel "salinan tujuan saat cair"
+    text destination_last4
+    text destination_name
+    text transfer_ref "SIM-TRF-... atau nomor Iris"
   }
   chain_jobs {
     int id PK
@@ -146,6 +175,7 @@ erDiagram
 - Satu iuran aktif per anggota per periode: indeks unik parsial pada `orders (member_id, period_id)` untuk status PENDING/SETTLED/SETTLED_PENDING_CHAIN/ANCHORED. Order FAILED/EXPIRED boleh digantikan.
 - Satu job per kelompok, order, dan payout: indeks unik parsial `chain_jobs (kind, circle_id)`, `(kind, order_id)`, dan `(kind, payout_id)`.
 - Uang selalu BIGINT rupiah.
+- `circles.start_date`: kelompok baru bisa dikunci pada/sesudah tanggal ini. `circles.draw_seed`: urutan giliran = anggota diurutkan menurut SHA-256(seed:member_ref) (migrasi 007).
 - Data on-chain hanya `member_ref` dan hash (tanpa nama, email, atau nomor rekening).
 - Satu usulan terbuka per periode: indeks unik parsial `proposals (period_id) WHERE status = 'open'`. Satu suara per anggota per usulan: `UNIQUE (proposal_id, member_id)`.
 - Satu job per usulan dan per suara: indeks unik parsial `chain_jobs (kind, proposal_id)` dan `(kind, vote_id)`. Bentuk baris `chain_jobs` dijaga CHECK menurut `kind`.

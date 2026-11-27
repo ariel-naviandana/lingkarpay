@@ -7,7 +7,7 @@ import { useAuth } from "../../context/useAuth";
 const breadcrumbs: Record<string, [string, string?, string?]> = {
   "/dashboard": ["Dashboard"],
   "/groups/new": ["Dashboard", "Buat kelompok"],
-  "/groups/": ["Dashboard", "Arisan Kantor DPE"],
+  "/groups/": ["Dashboard", "Detail kelompok"],
   "/history": ["Dashboard", "Riwayat"],
   "/operator": ["Dashboard", "Operator Console"],
 };
@@ -26,9 +26,6 @@ function getBreadcrumb(pathname: string): { parent: string; current: string; bad
 }
 
 function getPageBadge(pathname: string): { label: string; tone: "green" | "amber" | "gray" } | null {
-  if (pathname.startsWith("/groups/") && pathname !== "/groups/new") {
-    return { label: "Berjalan", tone: "green" };
-  }
   if (pathname === "/operator") {
     return { label: "Admin Only", tone: "amber" };
   }
@@ -65,27 +62,7 @@ export default function AppHeader() {
 
       {/* Right: badges + actions + user */}
       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-        {/* Environment badges */}
-
-        {/* Notification bell */}
-        <button
-          className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-sand bg-white text-stone-600 transition hover:bg-cream"
-          title="Notifikasi"
-        >
-          <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-          </svg>
-          <span className="absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
-            2
-          </span>
-        </button>
-
-        {/* CTA button – context-aware */}
-        {location.pathname.startsWith("/groups/") && location.pathname !== "/groups/new" && !location.pathname.endsWith("/pay") && (
-          <Link to={`${location.pathname}/pay`}>
-            <Button className="!px-3.5 !py-2 text-xs sm:text-sm">Bayar iuran</Button>
-          </Link>
-        )}
+        {/* Tombol bayar tidak ditaruh di header: halaman kelompok menampilkannya hanya bila ada tagihan. */}
         {location.pathname === "/dashboard" && (
           <Link to="/groups/new">
             <Button className="!px-3.5 !py-2 text-xs sm:text-sm">+ Buat kelompok</Button>

@@ -9,10 +9,11 @@
  * Idempoten: bila worker mati di tengah jalan, percobaan ulang melanjutkan dari state contract
  * (circleIdByRef, getMembers, getPayment, getPeriod) dan tidak membuat catatan ganda.
  */
-import { createPublicClient, createWalletClient, http, keccak256, parseAbi, parseEventLogs, stringToHex, type Hex } from "viem";
+import { createPublicClient, createWalletClient, http, parseAbi, parseEventLogs, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { hardhat, sepolia } from "viem/chains";
 import { config } from "../config.js";
+import { circleRef, toMemberId } from "./ids.js";
 import {
   claimJobs,
   markCircleCreated,
@@ -77,12 +78,6 @@ if (!RPC_URL || !PRIVATE_KEY || !CONTRACT) {
 const account = privateKeyToAccount(PRIVATE_KEY);
 const publicClient = createPublicClient({ chain, transport: http(RPC_URL) });
 const wallet = createWalletClient({ account, chain, transport: http(RPC_URL) });
-
-/** memberRef samaran dari backend (mis. "m_ab12cd34") menjadi bytes32. */
-const toMemberId = (ref: string): Hex => stringToHex(ref, { size: 32 });
-
-/** Referensi eksternal kelompok: hash tetap dari id kelompok di database. Dipakai contract untuk mencegah kelompok ganda. */
-const circleRef = (circleDbId: number): Hex => keccak256(stringToHex(`lingkarpay:circle:${circleDbId}`));
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 

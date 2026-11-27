@@ -119,7 +119,7 @@ export default function VerifyPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 rounded-2xl bg-violet-100 p-4 sm:p-5 text-xs sm:text-sm text-violet-900">
           <div>
             <b>Alamat contract</b>
-            <div className="break-all"><Mono>{CONTRACT_ADDRESS}</Mono></div>
+            <div className="font-mono text-xs break-all">{CONTRACT_ADDRESS}</div>
           </div>
           <div>
             <b>Chain Circle ID</b>
@@ -147,7 +147,7 @@ export default function VerifyPage() {
                 ["Iuran", rupiah(circle.contributionAmount)],
                 ["Anggota", String(circle.memberCount)],
                 ["Periode", `${circle.periodDays} hari`],
-                ["Penalti", `${circle.penaltyPct}% per hari`],
+                ["Penalti", circle.penaltyPct > 0 ? `${circle.penaltyPct}% sekali bila terlambat` : "Tidak ada"],
                 ["Status", circleStatus[circle.status]?.[0] ?? circle.status],
               ].map(([a, b]) => (
                 <div key={a} className="flex justify-between text-xs sm:text-sm">

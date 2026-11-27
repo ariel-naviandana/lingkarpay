@@ -50,6 +50,8 @@ export async function prepareTestDatabase(): Promise<boolean> {
   process.env.IRIS_ENABLED = "false";
   process.env.ORDER_EXPIRY_MINUTES = "60";
   process.env.DEFAULT_ADMIN_FEE = "1000";
+  // Tes tidak boleh membaca contract sungguhan dari .env; tes gerbang chain memakai pembaca palsu.
+  process.env.PAYOUT_CHAIN_CHECK = "off";
   return true;
 }
 
@@ -89,6 +91,8 @@ export interface SeedOptions {
   dueInDays?: number;
   /** ID kelompok on-chain. Bawaan "1" (sudah on-chain); null = belum dibuat di chain. */
   chainCircleId?: string | null;
+  /** Anggota sudah mengisi rekening pencairan dummy (BCA ...000N). Bawaan true. */
+  payoutAccounts?: boolean;
 }
 
 export interface SeededMember {
@@ -114,6 +118,7 @@ export async function seedCircle(pool: Pool, opts: SeedOptions = {}): Promise<Se
   const adminFee = opts.adminFee ?? 1000;
   const dueInDays = opts.dueInDays ?? 7;
   const chainCircleId = opts.chainCircleId === undefined ? "1" : opts.chainCircleId;
+  const withAccounts = opts.payoutAccounts ?? true;
 
   const users: Array<{ id: number; name: string; email: string }> = [];
   for (let i = 1; i <= n; i++) {
@@ -135,9 +140,12 @@ export async function seedCircle(pool: Pool, opts: SeedOptions = {}): Promise<Se
   const members: SeededMember[] = [];
   for (let i = 0; i < n; i++) {
     const m = await pool.query<{ id: number }>(
-      `INSERT INTO members (circle_id, user_id, member_ref, turn_order)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
-      [circleId, users[i]!.id, `m_test${i + 1}`, i + 1],
+      `INSERT INTO members (circle_id, user_id, member_ref, turn_order,
+                            payout_channel, payout_account_last4, payout_account_name, payout_account_hash)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      withAccounts
+        ? [circleId, users[i]!.id, `m_test${i + 1}`, i + 1, "BCA", `000${i + 1}`, users[i]!.name, `0xtest${i + 1}`]
+        : [circleId, users[i]!.id, `m_test${i + 1}`, i + 1, null, null, null, null],
     );
     members.push({ memberId: m.rows[0]!.id, userId: users[i]!.id, name: users[i]!.name, email: users[i]!.email });
   }

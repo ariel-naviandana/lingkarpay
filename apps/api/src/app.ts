@@ -14,8 +14,37 @@ import { payoutRoutes } from "./routes/payouts.js";
 import { reportRoutes } from "./routes/reports.js";
 import { proposalRoutes } from "./routes/proposals.js";
 import { adminRoutes } from "./routes/admin.js";
+import type { AuthRateLimit } from "./routes/auth.js";
 
-export async function buildApp(): Promise<FastifyInstance> {
+export interface BuildAppOptions {
+  /** Batas laju login dan registrasi. Bawaan dari .env; dimatikan saat NODE_ENV=test kecuali diisi. */
+  authRateLimit?: AuthRateLimit | false;
+}
+
+/** Batas laju bawaan dari konfigurasi. */
+function defaultAuthRateLimit(): AuthRateLimit | false {
+  if (config.NODE_ENV === "test") return false;
+  const windowMs = config.AUTH_RATE_WINDOW_MINUTES * 60_000;
+  return {
+    login: { max: config.AUTH_LOGIN_MAX_ATTEMPTS, windowMs },
+    register: { max: config.AUTH_REGISTER_MAX, windowMs },
+  };
+}
+
+/**
+ * Header keamanan untuk semua respons. API hanya mengembalikan JSON, jadi kebijakan konten
+ * dibuat ketat. Tidak ada header CORS: frontend memanggil API lewat proxy Vite (asal yang sama),
+ * sehingga browser menolak panggilan dari situs lain.
+ */
+const SECURITY_HEADERS: Record<string, string> = {
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+  "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+  "cache-control": "no-store",
+};
+
+export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: config.NODE_ENV === "test" ? "silent" : "info",
@@ -37,6 +66,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
   });
 
+  app.addHook("onSend", async (_req, reply) => {
+    reply.headers(SECURITY_HEADERS);
+  });
+
   app.addHook("onClose", async () => {
     await pool.end();
   });
@@ -44,6 +77,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.setErrorHandler((error, req, reply) => {
     const err: unknown = error;
     if (err instanceof AppError) {
+      if (err.headers) reply.headers(err.headers);
       return reply
         .code(err.httpStatus)
         .send({ error: { code: err.code, message: err.message } });
@@ -73,7 +107,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   await app.register(healthRoutes);
-  await app.register(authRoutes);
+  await app.register(authRoutes, { rateLimit: opts.authRateLimit ?? defaultAuthRateLimit() });
   await app.register(circleRoutes);
   await app.register(checkoutRoutes);
   await app.register(payoutRoutes);

@@ -9,11 +9,18 @@ import type { Circle, CirclePaymentItem, CirclePayoutItem } from "../types";
 
 const FILTERS = ["Semua", "Lunas", "Menunggu rantai", "Gagal atau kedaluwarsa"] as const;
 type Filter = (typeof FILTERS)[number];
-const match = (f: Filter, s: string) =>
-  f === "Semua" ||
-  (f === "Lunas" && s === "ANCHORED") ||
-  (f === "Menunggu rantai" && (s === "SETTLED" || s === "SETTLED_PENDING_CHAIN")) ||
-  (f === "Gagal atau kedaluwarsa" && (s === "FAILED" || s === "EXPIRED"));
+const SETTLED = (s: string) => s === "SETTLED" || s === "SETTLED_PENDING_CHAIN";
+// Pelunasan tunggakan tidak dicatat ke contract (periode lamanya sudah ditutup), jadi lunas = selesai.
+const match = (f: Filter, p: { status: string; isArrearsPayment?: boolean }) => {
+  const s = p.status;
+  const arrearsPaid = !!p.isArrearsPayment && (SETTLED(s) || s === "ANCHORED");
+  return (
+    f === "Semua" ||
+    (f === "Lunas" && (s === "ANCHORED" || arrearsPaid)) ||
+    (f === "Menunggu rantai" && SETTLED(s) && !arrearsPaid) ||
+    (f === "Gagal atau kedaluwarsa" && (s === "FAILED" || s === "EXPIRED"))
+  );
+};
 
 interface PaymentHistoryRow extends CirclePaymentItem {
   circle: string;
@@ -109,7 +116,7 @@ export default function HistoryPage() {
   if (loading && !data) return <Loading />;
   if (!data) return <ErrorBox message={error} onRetry={reload} />;
 
-  const rows = data.payments.filter((p: PaymentHistoryRow) => match(filter, p.status));
+  const rows = data.payments.filter((p: PaymentHistoryRow) => match(filter, p));
   // data.payouts sudah urut terbaru dulu; pilihan pengguna menggantikan bawaan.
   const last = data.payouts.find((p: PayoutHistoryRow) => p.id === selectedPayout) ?? data.payouts[0];
 
@@ -149,17 +156,24 @@ export default function HistoryPage() {
             </thead>
             <tbody>
               {rows.map((p: PaymentHistoryRow) => {
-                const [label, tone] = orderLabel(p.status);
+                const [label, tone] =
+                  p.isArrearsPayment && (SETTLED(p.status) || p.status === "ANCHORED")
+                    ? (["Lunas · tunggakan diteruskan", "green"] as const)
+                    : orderLabel(p.status);
                 return (
                   <tr key={p.orderId}>
                     <Td className="whitespace-nowrap">{dateTime(p.paidAt ?? p.createdAt)}</Td>
                     <Td>
                       <Link to={`/groups/${p.circleId}`} className="font-bold hover:underline">{p.circle}</Link>
-                      <div className="text-xs text-stone-500">Periode {p.periodNo}</div>
+                      <div className="text-xs text-stone-500">
+                        Periode {p.periodNo}{p.isArrearsPayment ? " · pelunasan tunggakan" : ""}
+                      </div>
                     </Td>
                     <Td>
                       <b>{rupiah(p.grossAmount)}</b>
-                      <div className="text-xs text-stone-500">iuran{p.penaltyAmount > 0 ? " + penalti" : ""} + admin</div>
+                      <div className="text-xs text-stone-500">
+                        {p.isArrearsPayment ? "tunggakan" : "iuran"}{p.penaltyAmount > 0 ? " + penalti" : ""} + admin
+                      </div>
                     </Td>
                     <Td>{paymentMethod(p.paymentType)}</Td>
                     <Td><Badge tone={tone}>{label}</Badge></Td>
@@ -167,7 +181,7 @@ export default function HistoryPage() {
                       {p.txHash ? (
                         <a href={etherscanTx(p.txHash)} target="_blank" rel="noreferrer" className="underline"><Mono>{shortHash(p.txHash)}</Mono></a>
                       ) : (
-                        <Mono>{p.chainStatus ?? "–"}</Mono>
+                        <Mono>{p.isArrearsPayment ? "tidak dicatat" : p.chainStatus ?? "–"}</Mono>
                       )}
                     </Td>
                     <Td>

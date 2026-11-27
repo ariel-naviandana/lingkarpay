@@ -3,7 +3,7 @@ import { Badge, Card, Logo, Loading, ErrorBox } from "../components/ui";
 import PayButton from "../components/PayButton";
 import { useAsync } from "../hooks/useAsync";
 import { api } from "../api";
-import { rupiah } from "../lib/format";
+import { daysLate, formatDate, rupiah } from "../lib/format";
 
 export default function PaymentPage() {
   const { id = "1" } = useParams<{ id: string }>();
@@ -45,10 +45,13 @@ export default function PaymentPage() {
   const groupName = circle.name;
   const periodNo  = currentPeriod?.periodNo ?? 1;
 
-  // Estimated penalty (3-day late as placeholder — real value comes from checkout response)
-  const estimatedPenalty = Math.round(iuran * (penalty / 100) * 3);
-  const total = iuran + estimatedPenalty + adminFee;
-  const isRunning = currentPeriod?.status === "running";
+  // Penalti dihitung server: penaltyPct% dari iuran, sekali, hanya bila sudah lewat jatuh tempo.
+  const me = data.members.find((m) => m.isMe);
+  const penaltyDue = me?.currentPayment?.penaltyDue ?? 0;
+  const alreadyPaid = !!me?.currentPayment?.paid;
+  const lateDays = currentPeriod?.dueDate ? daysLate(currentPeriod.dueDate) : 0;
+  const total = iuran + penaltyDue + adminFee;
+  const isRunning = currentPeriod?.status === "running" && !alreadyPaid;
 
   return (
     <div className="min-h-screen bg-cream">
@@ -68,9 +71,7 @@ export default function PaymentPage() {
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Bayar iuran</h1>
             <p className="mt-1 text-xs sm:text-sm text-stone-500">
               {groupName} · Periode {periodNo} ·{" "}
-              {currentPeriod?.dueDate
-                ? new Date(currentPeriod.dueDate).toLocaleDateString("id-ID", { month: "long", year: "numeric" })
-                : "–"}
+              {currentPeriod?.dueDate ? `jatuh tempo ${formatDate(currentPeriod.dueDate)}` : "–"}
             </p>
           </div>
 
@@ -80,10 +81,10 @@ export default function PaymentPage() {
               <span>Iuran periode {periodNo}</span>
               <b>{rupiah(iuran)}</b>
             </div>
-            {estimatedPenalty > 0 && (
+            {penaltyDue > 0 && (
               <div className="flex justify-between text-xs sm:text-sm">
-                <span>Estimasi penalti keterlambatan ({penalty}% × 3 hari)</span>
-                <b className="text-red-800">{rupiah(estimatedPenalty)}</b>
+                <span>Penalti keterlambatan ({penalty}% dari iuran, terlambat {lateDays} hari)</span>
+                <b className="text-red-800">{rupiah(penaltyDue)}</b>
               </div>
             )}
             <div className="flex justify-between text-xs sm:text-sm">
@@ -91,11 +92,14 @@ export default function PaymentPage() {
               <b>{rupiah(adminFee)}</b>
             </div>
             <div className="flex items-end justify-between border-t border-sand pt-4">
-              <b className="text-sm sm:text-base">Total (estimasi)</b>
+              <b className="text-sm sm:text-base">Total</b>
               <b className="text-2xl sm:text-3xl tracking-tight">{rupiah(total)}</b>
             </div>
             <p className="text-xs text-stone-500">
-              Penalti dibaca dari smart contract saat checkout. Dana penalti masuk ke dana periode ini. Biaya admin bersifat ilustrasi.
+              {penalty > 0
+                ? `Penalti ${penalty}% dari iuran dikenakan sekali bila membayar lewat jatuh tempo; dananya masuk ke dana periode ini. `
+                : "Kelompok ini tanpa penalti keterlambatan. "}
+              Nominal final dikunci server saat order dibuat. Biaya admin ditetapkan aplikasi (pendapatan platform, tidak ikut dicairkan).
             </p>
           </Card>
 
@@ -150,10 +154,12 @@ export default function PaymentPage() {
               </div>
             ) : (
               <div className="rounded-xl border border-amber-200 bg-amber-soft p-4 text-xs sm:text-sm text-amber-950 space-y-1">
-                <b>Periode tidak sedang menerima iuran</b>
+                <b>{alreadyPaid ? "Iuran sudah lunas" : "Periode tidak sedang menerima iuran"}</b>
                 <p className="text-amber-900">
-                  {currentPeriod?.status === "ready_payout"
-                    ? "Periode ini telah ditutup (status Siap Cair) dan tidak lagi menerima iuran baru. Pengelola dapat melakukan pencairan dari halaman kelompok."
+                  {alreadyPaid
+                    ? "Iuran Anda untuk periode ini sudah lunas. Tidak ada tagihan lagi."
+                    : currentPeriod?.status === "ready_payout"
+                    ? "Periode ini telah ditutup (status Siap Cair) dan tidak lagi menerima iuran baru. Pengelola atau penerima giliran dapat mencairkannya dari halaman kelompok."
                     : circle.status === "draft"
                     ? "Kelompok ini belum dimulai oleh pengelola. Iuran baru dapat dibayar setelah kelompok dimulai."
                     : "Tidak ada periode berjalan yang menerima pembayaran saat ini."}

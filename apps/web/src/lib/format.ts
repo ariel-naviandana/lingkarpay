@@ -1,5 +1,9 @@
 export const rupiah = (n: number) => "Rp" + Math.round(n).toLocaleString("id-ID");
 
+/** "BCA ••••7890 a.n. Budi" dari rekening tersamar. */
+export const accountLabel = (a: { channelLabel: string; last4: string; accountName: string }) =>
+  `${a.channelLabel} ••••${a.last4} a.n. ${a.accountName}`;
+
 export function formatDate(dateString?: string | Date | null): string {
   if (!dateString) return "–";
   const d = typeof dateString === "string" ? new Date(dateString) : dateString;
@@ -9,6 +13,16 @@ export function formatDate(dateString?: string | Date | null): string {
     month: "short",
     year: "numeric",
   });
+}
+
+/** Tanggal hari ini di WIB (YYYY-MM-DD), sama dengan acuan server untuk tanggal mulai. */
+export const todayWib = () => new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+
+/** Format tanggal kalender YYYY-MM-DD tanpa geser zona waktu, mis. "27 Nov 2026". */
+export function formatYmd(ymd?: string | null): string {
+  if (!ymd) return "–";
+  const d = new Date(`${ymd.slice(0, 10)}T00:00:00`);
+  return isNaN(d.getTime()) ? ymd : formatDate(d);
 }
 
 export function formatDateTime(dateString?: string | Date | null): string {

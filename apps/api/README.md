@@ -10,7 +10,7 @@ cd apps\api
 npm install
 npm run typecheck
 npm run migrate                           # membuat tabel
-npm test                                  # 107 tes (butuh Postgres)
+npm test                                  # 146 tes (butuh Postgres)
 npm run dev                               # http://localhost:3001
 ```
 
@@ -20,6 +20,7 @@ Salin `.env.example` ke `.env`, lalu isi sendiri (jangan dikirim ke chat atau di
 - `MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`.
 - `MIDTRANS_SIGNATURE_KEY`: Signature Secret Key dari Settings > Access Keys. Dipakai memverifikasi signature notifikasi dan Status API.
 - Modul chain (hanya bila menjalankan worker): `CHAIN_NAME` (`sepolia` atau `hardhat`), `CHAIN_RPC_URL`, `OPERATOR_PRIVATE_KEY` (akun testnet khusus), `LINGKARPAY_ADDRESS`. Satu set aktif saja; detail di `src/chain/README.md`.
+- Gerbang pencairan: `PAYOUT_CHAIN_CHECK` (`auto` bawaan, `on`, `off`). Bila `CHAIN_RPC_URL` dan `LINGKARPAY_ADDRESS` diisi, pencairan menunggu contract menyatakan periode siap cair, jadi worker chain harus berjalan. Demo tanpa worker: set `PAYOUT_CHAIN_CHECK=off`.
 
 Server menolak start bila ada variabel wajib yang kurang. **Restart `npm run dev` setiap `.env` berubah** (`tsx watch` tidak memuat ulang karena `.env`). Log start menampilkan sidik jari key (`server_key_fp`) untuk memastikan yang termuat.
 

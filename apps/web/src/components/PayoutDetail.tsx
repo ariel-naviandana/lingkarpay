@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Badge, Mono } from "./ui";
-import { dateTime, etherscanTx, rupiah, shortHash } from "../lib/format";
+import { accountLabel, dateTime, etherscanTx, rupiah, shortHash } from "../lib/format";
 import type { CirclePayoutItem } from "../types";
 
 interface Step {
@@ -24,11 +24,13 @@ function buildSteps(p: CirclePayoutItem): Step[] {
       title: "Dikirim ke penerima",
       desc: (
         <>
-          Simulasi sandbox: <b>{rupiah(p.amount)}</b> untuk {p.recipientName ?? p.recipientMemberRef} dicatat sebagai
-          terkirim, tidak ada uang yang benar-benar bergerak. Pada produksi, dana dikirim lewat Midtrans Iris ke rekening penerima.
+          Transfer simulasi <b>{rupiah(p.amount)}</b>
+          {p.destination ? <> ke <b>{accountLabel(p.destination)}</b></> : <> untuk {p.recipientName ?? p.recipientMemberRef}</>}
+          {p.transferRef && <>, ref <Mono>{p.transferRef}</Mono></>}. Tidak ada uang yang benar-benar bergerak; pada produksi
+          dana dikirim dari rekening penampung di mitra berizin lewat layanan disbursement (Midtrans Iris).
         </>
       ),
-      time: p.updatedAt ?? p.createdAt,
+      time: p.transferredAt ?? p.updatedAt ?? p.createdAt,
       state: "done",
     };
   } else {
@@ -115,7 +117,15 @@ function buildSteps(p: CirclePayoutItem): Step[] {
       title: "Pencairan dibuat",
       desc: (
         <>
-          Nominal <b>{rupiah(p.amount)}</b> = iuran + penalti terkumpul.
+          Nominal <b>{rupiah(p.amount)}</b> = iuran + penalti terkumpul
+          {(p.arrearsDeducted ?? 0) > 0 && <> − tunggakan penerima {rupiah(p.arrearsDeducted ?? 0)}</>}.
+          {(p.deductedArrears ?? []).map((d) => (
+            <span key={d.periodNo + d.creditorName} className="block">
+              Tunggakan periode {d.periodNo} {rupiah(d.amount + d.penaltyAmount)} diteruskan ke {d.creditorName}
+              {d.forward?.destination && <> ({accountLabel(d.forward.destination)})</>}
+              {d.forward?.transferRef && <>, ref <Mono>{d.forward.transferRef}</Mono></>}.
+            </span>
+          ))}
           {(p.adminFeeTotal ?? 0) > 0 && <> Biaya admin {rupiah(p.adminFeeTotal ?? 0)} adalah pendapatan platform dan tidak ikut dicairkan.</>}
         </>
       ),
@@ -167,12 +177,25 @@ export function PayoutDetail({ payout: p, title }: { payout: CirclePayoutItem; t
             {(p.penaltyTotal ?? 0) > 0 && <> + penalti {rupiah(p.penaltyTotal ?? 0)}</>}
           </span>
         </div>
+        {(p.arrearsDeducted ?? 0) > 0 && (
+          <div className="flex justify-between gap-3 text-red-700">
+            <span>Potongan tunggakan</span>
+            <span className="text-right">
+              −{rupiah(p.arrearsDeducted ?? 0)} (diteruskan ke{" "}
+              {[...new Set((p.deductedArrears ?? []).map((d) => d.creditorName))].join(", ")})
+            </span>
+          </div>
+        )}
         <div className="flex justify-between gap-3">
           <span>Rekening tujuan</span>
-          <span className="text-right">
-            {isSim(p) ? "Tidak ada (simulasi)" : p.recipientAccountHash ? <>hash <Mono>{shortHash(p.recipientAccountHash)}</Mono></> : "–"}
-          </span>
+          <b className="text-right">{p.destination ? accountLabel(p.destination) : "–"}</b>
         </div>
+        {p.transferRef && (
+          <div className="flex justify-between gap-3">
+            <span>Ref. transfer{isSim(p) && " (simulasi)"}</span>
+            <Mono>{p.transferRef}</Mono>
+          </div>
+        )}
       </div>
 
       <ol className="space-y-3">

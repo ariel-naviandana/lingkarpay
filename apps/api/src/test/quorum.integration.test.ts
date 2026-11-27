@@ -70,6 +70,12 @@ async function jobCount(kind: string): Promise<number> {
   return r.rows[0]!.n;
 }
 
+/** Usulan tutup periode hanya boleh setelah jatuh tempo: jadikan periode lewat tenggat lalu usulkan. */
+async function proposeClose(s: Seeded, index: number, periodId = s.periodId) {
+  await ctx.pool.query("UPDATE periods SET due_date = now() - interval '1 minute' WHERE id = $1", [periodId]);
+  return ctx.proposals.createClosePeriodProposal(asUser(s.members[index]!), periodId);
+}
+
 /** Kelompok 3 anggota (kuorum 2). */
 const seed3 = () => seedCircle(ctx.pool, { memberCount: 3 });
 /** Kelompok 3 anggota yang anggota 1-nya sudah membayar (usulan tanpa dana ditolak: NO_FUNDS). */
@@ -82,7 +88,7 @@ const seed3Paid = async () => {
 describe("kuorum: usulan tutup periode", () => {
   dbTest("anggota membuat usulan: open, tenggat 3 hari, satu job proposeClosePeriod tanpa data pribadi", async () => {
     const s = await seed3Paid();
-    const pr = await ctx.proposals.createClosePeriodProposal(asUser(s.members[0]!), s.periodId);
+    const pr = await proposeClose(s, 0);
     assert.equal(pr.status, "open");
     assert.equal(pr.kind, "close_period");
     assert.equal(pr.approvals, 0);
@@ -105,9 +111,9 @@ describe("kuorum: usulan tutup periode", () => {
       (e) => code(e) === "PERIOD_NOT_OPEN",
     );
 
-    await ctx.proposals.createClosePeriodProposal(asUser(s.members[0]!), s.periodId);
+    await proposeClose(s, 0);
     await assert.rejects(
-      ctx.proposals.createClosePeriodProposal(asUser(s.members[1]!), s.periodId),
+      proposeClose(s, 1),
       (e) => code(e) === "PROPOSAL_EXISTS",
     );
   });
@@ -120,13 +126,13 @@ describe("kuorum: usulan tutup periode", () => {
     );
     assert.equal(await jobCount("proposeClosePeriod"), 0);
     await pay(s, 0);
-    const pr = await ctx.proposals.createClosePeriodProposal(asUser(s.members[0]!), s.periodId);
+    const pr = await proposeClose(s, 0);
     assert.equal(pr.status, "open");
   });
 
   dbTest("satu anggota satu suara; bukan anggota ditolak; tiap suara satu job castVote tanpa data pribadi", async () => {
     const s = await seed3Paid();
-    const pr = await ctx.proposals.createClosePeriodProposal(asUser(s.members[0]!), s.periodId);
+    const pr = await proposeClose(s, 0);
 
     const v1 = await ctx.proposals.castVote(asUser(s.members[0]!), pr.id, true);
     assert.equal(v1.myVote, true);
@@ -156,7 +162,7 @@ describe("kuorum: usulan tutup periode", () => {
   dbTest("kuorum tercapai: usulan dieksekusi, periode siap cair, pencairan berjalan walau belum lengkap", async () => {
     const s = await seed3();
     await pay(s, 0); // hanya anggota 1 yang sudah membayar
-    const pr = await ctx.proposals.createClosePeriodProposal(asUser(s.members[0]!), s.periodId);
+    const pr = await proposeClose(s, 0);
 
     await ctx.proposals.castVote(asUser(s.members[0]!), pr.id, true);
     assert.equal(await periodStatus(s.periodId), "running"); // 1 dari kuorum 2
@@ -183,7 +189,7 @@ describe("kuorum: usulan tutup periode", () => {
   dbTest("rincian pencairan: penerima, nominal, asal dana, dan cara periode ditutup", async () => {
     const s = await seed3();
     await pay(s, 0);
-    const pr = await ctx.proposals.createClosePeriodProposal(asUser(s.members[0]!), s.periodId);
+    const pr = await proposeClose(s, 0);
     await ctx.proposals.castVote(asUser(s.members[0]!), pr.id, true);
     await ctx.proposals.castVote(asUser(s.members[1]!), pr.id, true);
     await ctx.payouts.createPayout(asUser(s.members[0]!), { periodId: s.periodId, mode: "simulated" });
@@ -202,26 +208,29 @@ describe("kuorum: usulan tutup periode", () => {
     assert.equal(p.closedBy, "quorum");
     assert.equal(p.approveVotes, 2);
     assert.equal(p.quorumNeeded, 2);
-    assert.equal(p.recipientAccountHash, null); // simulasi: tidak ada rekening
+    assert.equal(p.recipientAccountHash, "0xtest1"); // hash rekening yang diisi penerima (seed uji)
+    assert.equal(p.destination?.channel, "BCA"); // tujuan transfer simulasi, rekening tersamar
+    assert.equal(p.destination?.last4, "0001");
+    assert.match(p.transferRef ?? "", /^SIM-TRF-/);
     assert.ok(!JSON.stringify(p).includes("example.com")); // tanpa email
   });
 
   dbTest("ditolak bila kuorum mustahil tercapai; periode tetap berjalan; usulan baru boleh dibuat", async () => {
     const s = await seed3Paid();
-    const pr = await ctx.proposals.createClosePeriodProposal(asUser(s.members[0]!), s.periodId);
+    const pr = await proposeClose(s, 0);
     await ctx.proposals.castVote(asUser(s.members[1]!), pr.id, false);
     const rejected = await ctx.proposals.castVote(asUser(s.members[2]!), pr.id, false); // 2 penolak dari 3
     assert.equal(rejected.status, "rejected");
     assert.equal(await periodStatus(s.periodId), "running");
     assert.equal(await jobCount("executeProposal"), 0);
 
-    const again = await ctx.proposals.createClosePeriodProposal(asUser(s.members[0]!), s.periodId);
+    const again = await proposeClose(s, 0);
     assert.equal(again.status, "open");
   });
 
   dbTest("melewati batas waktu: suara ditolak (VOTING_CLOSED), usulan kedaluwarsa, usulan baru boleh dibuat", async () => {
     const s = await seed3Paid();
-    const pr = await ctx.proposals.createClosePeriodProposal(asUser(s.members[0]!), s.periodId);
+    const pr = await proposeClose(s, 0);
     await ctx.pool.query("UPDATE proposals SET deadline = now() - interval '1 minute' WHERE id = $1", [pr.id]);
 
     // tampilan sudah menganggapnya kedaluwarsa
@@ -231,13 +240,13 @@ describe("kuorum: usulan tutup periode", () => {
     assert.equal(row.rows[0]!.status, "expired");
     assert.equal(await periodStatus(s.periodId), "running"); // keputusan tidak berlaku
 
-    const again = await ctx.proposals.createClosePeriodProposal(asUser(s.members[0]!), s.periodId);
+    const again = await proposeClose(s, 0);
     assert.equal(again.status, "open");
   });
 
   dbTest("semua iuran akhirnya lunas: usulan yang masih terbuka kedaluwarsa", async () => {
     const s = await seed3Paid();
-    const pr = await ctx.proposals.createClosePeriodProposal(asUser(s.members[0]!), s.periodId);
+    const pr = await proposeClose(s, 0);
     for (let i = 1; i < 3; i++) await pay(s, i); // anggota 1 sudah membayar di seed3Paid
     assert.equal(await periodStatus(s.periodId), "ready_payout");
     const row = await ctx.pool.query<{ status: string }>("SELECT status FROM proposals WHERE id = $1", [pr.id]);
@@ -247,7 +256,7 @@ describe("kuorum: usulan tutup periode", () => {
   dbTest("outbox: markPayout ditahan sampai semua job kuorum kelompok itu terkonfirmasi", async () => {
     const s = await seed3();
     await pay(s, 0);
-    const pr = await ctx.proposals.createClosePeriodProposal(asUser(s.members[0]!), s.periodId);
+    const pr = await proposeClose(s, 0);
     await ctx.proposals.castVote(asUser(s.members[0]!), pr.id, true);
     await ctx.proposals.castVote(asUser(s.members[1]!), pr.id, true); // kuorum: executeProposal diantre
     await ctx.payouts.createPayout(asUser(s.members[0]!), { periodId: s.periodId, mode: "simulated" });
@@ -271,7 +280,7 @@ describe("kuorum: usulan tutup periode", () => {
 
   dbTest("outbox: suara dan eksekusi ditahan sampai usulan on-chain; proposeClosePeriod dikonfirmasi lewat markProposalCreated", async () => {
     const s = await seed3Paid(); // kelompok sudah on-chain (chain_circle_id = 1)
-    const pr = await ctx.proposals.createClosePeriodProposal(asUser(s.members[0]!), s.periodId);
+    const pr = await proposeClose(s, 0);
     await ctx.proposals.castVote(asUser(s.members[1]!), pr.id, false); // masih open
 
     const first = await ctx.outbox.claimJobs(10);

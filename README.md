@@ -15,10 +15,10 @@ Pembagian orang per jalur: lihat Tabel 25 di proposal. Antarmuka antar jalur dit
 ## Status
 | Jalur | Status |
 |---|---|
-| Payment gateway (`apps/api`) | Selesai dan terverifikasi: 107 tes, smoke test (alur penuh dan kuorum), skenario Midtrans sandbox. Rincian: `docs/PLAN.md` |
+| Payment gateway (`apps/api`) | Selesai dan terverifikasi: 146 tes, smoke test (alur penuh dan kuorum), skenario Midtrans sandbox. Rincian: `docs/PLAN.md` |
 | Smart contract (`contracts/`, `apps/api/src/chain/`) | Selesai: contract lengkap termasuk kuorum (40 tes), ter-deploy di Sepolia (v2), worker chain idempoten; terbukti end to end dengan hash transaksi (`docs/BUKTI_SEPOLIA.md`) |
-| Frontend (`apps/web/`) | Kerangka awal disiapkan (belum dijalankan); halaman lanjutan ditandai `TODO(frontend)` |
-| Business case (`docs/business-case/`) | Belum dimulai; daftar isi dan angka prototipe tersedia |
+| Frontend (`apps/web/`) | Berjalan dan terhubung ke API: masuk/daftar, dashboard, buat kelompok, detail kelompok (bayar, kuorum, pencairan dengan rincian), riwayat, konsol operator (khusus admin), dan portal verifikasi publik. `npm run build` lulus |
+| Business case (`docs/business-case/`) | Dikerjakan anggota lain; di repo tersedia daftar isi dan angka prototipe (`docs/business-case/README.md`) |
 
 ## Struktur
 ```
@@ -31,7 +31,7 @@ lingkarpay/
 │   │   ├── src/chain/         modul chain: worker outbox -> contract (jalur smart contract)
 │   │   ├── db/migrations/     skema SQL
 │   │   └── scripts/           smoke test PowerShell (alur penuh, skenario)
-│   └── web/                   jalur frontend (Vite + React, kerangka awal)
+│   └── web/                   jalur frontend (Vite + React + Tailwind)
 ├── contracts/                 jalur smart contract (Hardhat: contract, tes, deploy Sepolia)
 │   └── deployments/           alamat dan ABI hasil deploy Sepolia
 └── docs/
@@ -41,6 +41,7 @@ lingkarpay/
     ├── RULES.md               aturan kerja
     ├── PLAN.md                status dan bukti pengerjaan
     ├── DEMO.md                runbook demo dan progress report
+    ├── KEAMANAN.md            model ancaman, celah blockchain, dan solusinya
     ├── IRIS.md                payout Midtrans Iris (opsional)
     ├── DEV_LOG.md             log pengembangan ide dan keputusan
     ├── AI_STATEMENT.md        pernyataan penggunaan alat AI
@@ -52,14 +53,15 @@ lingkarpay/
 Frontend ─ POST /checkout ─▶ API ─▶ Midtrans Snap ─ bayar di simulator
 Midtrans ─ webhook ─▶ API (signature, dedupe, cek jumlah) ─▶ order SETTLED ─▶ chain_jobs (outbox)
 modul chain ─ claimJobs ─▶ recordPayment di Sepolia ─ markJobConfirmed ─▶ order ANCHORED
-Portal verifikasi ─ baca langsung dari contract (bukan dari database)
+Pencairan ─ cek getPeriod/recipientOf di contract ─▶ payout ─▶ markPayout di Sepolia
+Portal verifikasi ─ status dari server (ID samaran), dicocokkan publik lewat Etherscan
 ```
 
 ## Menjalankan
 ```powershell
 docker compose up -d          # Postgres, di root repo
 cd apps\api; npm install; npm run migrate; npm run dev     # backend, http://localhost:3001
-cd apps\web; npm install; npm run dev                       # frontend, http://localhost:5173 (kerangka)
+cd apps\web; npm install; npm run dev                       # frontend, http://localhost:5173
 ```
 Panduan lengkap dari clone sampai jalan (prasyarat, `.env`, per peran): `docs/SETUP.md`. Rincian, termasuk `.env` dan uji dengan Midtrans sandbox: `apps/api/README.md`. Contract: `contracts/README.md`.
 

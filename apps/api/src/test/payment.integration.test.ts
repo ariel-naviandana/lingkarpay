@@ -519,9 +519,15 @@ describe("kelompok on-chain (createCircle)", () => {
       memberCount: 2,
       periodDays: 7,
       penaltyPct: 5,
-      adminFee: 1000,
+      startDate: new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10), // hari ini (WIB)
+      payoutAccount: { channel: "BCA", accountNumber: "1234567890", accountName: "Pengguna 1" },
     });
     await ctx.circles.addMemberByEmail(u1.id, c.id, u2.email);
+    await ctx.circles.acceptInvitation(u2.id, c.id, {
+      channel: "GOPAY",
+      accountNumber: "081234567890",
+      accountName: "Pengguna 2",
+    });
     await ctx.circles.startCircle(u1.id, c.id);
     const period = await ctx.pool.query<{ id: number }>(
       "SELECT id FROM periods WHERE circle_id = $1 AND period_no = 1",
@@ -560,7 +566,7 @@ describe("kelompok on-chain (createCircle)", () => {
     const s = await startedCircle();
     const co = await ctx.checkout.createCheckout(
       { id: s.u1.id, name: s.u1.name, email: s.u1.email, role: "user" as const },
-      { circleId: s.circleId, periodId: s.periodId, memberId: s.members[0]!.id },
+      { circleId: s.circleId, periodId: s.periodId, memberId: s.members.find((m) => m.user_id === s.u1.id)!.id },
     );
     await settle(co);
 
@@ -589,7 +595,7 @@ describe("kelompok on-chain (createCircle)", () => {
     const s = await startedCircle();
     const co = await ctx.checkout.createCheckout(
       { id: s.u1.id, name: s.u1.name, email: s.u1.email, role: "user" as const },
-      { circleId: s.circleId, periodId: s.periodId, memberId: s.members[0]!.id },
+      { circleId: s.circleId, periodId: s.periodId, memberId: s.members.find((m) => m.user_id === s.u1.id)!.id },
     );
     await settle(co);
     const [create] = await ctx.outbox.claimJobs(10);

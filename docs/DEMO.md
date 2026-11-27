@@ -7,8 +7,8 @@ Untuk progress report (di kelas, sebelum 24 November) dan presentasi (mulai 26 N
 - [ ] Server key punya izin Snap Checkout, Core API, Cancel transaction, dan Expire transaction = Write (lihat `apps/api/README.md`).
 - [ ] `apps\api\.env` berisi: `DATABASE_URL`, `MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`, `MIDTRANS_SIGNATURE_KEY`.
 - [ ] Akun untuk konsol Operator: daftar lewat aplikasi, lalu `npm run admin:grant -- email@contoh.id` (peran admin dari database).
-- [ ] `npm run migrate`, `npm run typecheck`, `npm test` (107 tes lulus). Di folder `contracts`: `npm test` (40 tes lulus).
-- [ ] Untuk demo blockchain: `apps\api\.env` satu set aktif `CHAIN_NAME=sepolia`, `CHAIN_RPC_URL`, `OPERATOR_PRIVATE_KEY`, `LINGKARPAY_ADDRESS=0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2`; `npm run chain:worker` berjalan (baris pertama lognya menunjukkan Sepolia, operator, dan alamat contract yang benar).
+- [ ] `npm run migrate`, `npm run typecheck`, `npm test` (146 tes lulus). Di folder `contracts`: `npm test` (40 tes lulus).
+- [ ] Untuk demo blockchain: `apps\api\.env` satu set aktif `CHAIN_NAME=sepolia`, `CHAIN_RPC_URL`, `OPERATOR_PRIVATE_KEY`, `LINGKARPAY_ADDRESS=0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2`; `npm run chain:worker` berjalan (baris pertama lognya menunjukkan Sepolia, operator, dan alamat contract yang benar). Dengan `.env` ini, pencairan menunggu contract (`PAYOUT_CHAIN_CHECK=auto`): skrip smoke otomatis mengulang sampai contract menyatakan periode siap cair. Bila demo tanpa worker, set `PAYOUT_CHAIN_CHECK=off` lalu restart backend.
 - [ ] Nyalakan tunnel **sekali** dan jangan dimatikan: `cloudflared tunnel --url http://localhost:3001`. Salin alamatnya ke Notification URL di dashboard Midtrans (`.../midtrans-webhook`), Save, reload untuk memastikan.
 - [ ] `powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1 -Both` lolos semua.
 - [ ] Rekam **video demo cadangan** dari smoke test (koneksi ke Midtrans sempat lambat, tunnel gratis tanpa jaminan).
@@ -17,11 +17,11 @@ Untuk progress report (di kelas, sebelum 24 November) dan presentasi (mulai 26 N
 ## Alur demo (sekitar 7 menit)
 1. **Konteks (30 dtk).** Arisan digital: iuran lewat payment gateway, aturan di smart contract. Bagian ini: dari klik bayar sampai status berubah dan antre ke blockchain.
 2. **Jalankan** `smoke.ps1 -Both`. Sambil berjalan, jelaskan langkah yang tampil:
-   - Buat kelompok, tambah anggota, mulai: urutan giliran terkunci, job `createCircle` diantre.
+   - Buat kelompok (rekening pembuat wajib, biaya admin dari aplikasi), tanggal mulai (hari ini untuk demo), undang anggota, anggota menerima undangan dengan rekening, mulai: urutan giliran diundi server (seed tampil di "Aturan kelompok"), job `createCircle` diantre.
    - Checkout: tagihan Rp11.000 = iuran Rp10.000 + biaya admin Rp1.000; checkout ulang mengembalikan order yang sama (idempoten).
 3. **Bayar di simulator** (VA BCA). Tunjukkan di log server: `webhook diproses ... outcome: applied`, dan di dashboard Midtrans: Notification history **Completed**.
 4. **Tunjukkan status** `GET /orders/<orderId>`: riwayat status PENDING → SETTLED, `chainStatus: queued` (outbox menunggu modul chain).
-5. **Pembayaran kedua** → periode siap cair → **pencairan simulasi** Rp20.000 (iuran saja; biaya admin pendapatan LingkarPay) → periode 2 dibuka.
+5. **Pembayaran kedua** → periode siap cair → **pencairan simulasi** Rp20.000 (iuran saja; biaya admin pendapatan LingkarPay) ke rekening dummy yang diisi penerima (mis. BCA ••••7890, ref `SIM-TRF-...`) → periode 2 dibuka. Lewat UI: penerima mengisi kartu "Rekening pencairan saya" di halaman kelompok; tanpa rekening, tombol cairkan nonaktif.
 6. **Rekonsiliasi** `GET /reports/reconciliation?circleId=...`: selisih terkumpul vs dicairkan = 0, `issues=0`.
 7. **Keamanan (1 menit).** Tunjukkan tes otomatis (`npm test`): signature palsu ditolak (401), jumlah tidak cocok ditolak, notifikasi duplikat diabaikan, notifikasi tidak berurutan tidak menurunkan status.
 8. **Sambungan ke blockchain.** Tunjukkan satu baris `chain_jobs` (payload tanpa data pribadi) dan jelaskan: modul chain mengambil job, mencatat ke contract di Sepolia, lalu memanggil `markJobConfirmed` sehingga order menjadi ANCHORED.
@@ -33,7 +33,7 @@ Dari `apps\api`. Semuanya di Midtrans sandbox; di halaman Snap pilih Bank Transf
 | E-wallet | `smoke-scenarios.ps1 -Scenario Ewallet` | Bayar GoPay lewat simulator; status SETTLED |
 | Kedaluwarsa | `smoke-scenarios.ps1 -Scenario Expire -ApiExpire` | Order EXPIRED, anggota bisa membayar lagi |
 | Dibatalkan | `smoke-scenarios.ps1 -Scenario Cancel -ApiCancel` | Order FAILED, anggota bisa membayar lagi |
-| Kuorum | `smoke-quorum.ps1 -WaitChain` | Satu anggota membayar, usulan tutup periode disetujui 2 dari 3, pencairan berjalan, dan usulan tercatat di Sepolia (butuh worker) |
+| Kuorum | `smoke-quorum.ps1 -WaitChain` | Satu anggota membayar, usulan sebelum jatuh tempo ditolak, jatuh tempo disimulasikan (`/dev/periods/:id/make-overdue`, butuh `DEV_TOOLS=true`), usulan tutup periode disetujui 2 dari 3, pencairan oleh penerima hasil undian, pencairan berjalan, dan usulan tercatat di Sepolia (butuh worker) |
 
 Bagian "tercatat di blockchain" (langkah 8) bisa didemokan penuh di Sepolia: nyalakan `npm run chain:worker` dengan `.env` yang menunjuk ke Sepolia, lalu setelah order `ANCHORED` buka `https://sepolia.etherscan.io/address/0x87eD2019c518e0309BddCB4AA7F2c375F1aE04B2` (tab Transactions) dan jalankan `npm run inspect` di folder `contracts`. Satu transaksi di Sepolia butuh sekitar 12 detik, jadi siapkan screenshot dan video cadangan. Bukti dan perintah: `docs/BUKTI_SEPOLIA.md`.
 
@@ -51,6 +51,7 @@ Siapkan screenshot Etherscan dan video cadangan: satu transaksi di Sepolia butuh
 | Snap lambat/timeout | Coba ulang; sudah ada retry. Putar video cadangan bila perlu. |
 | Alamat tunnel berubah | Perbarui Notification URL di dashboard Midtrans. |
 | Port atau database error | `docker compose up -d`, `npm run migrate`, restart `npm run dev`. |
+| Pencairan ditolak `CHAIN_NOT_READY` | Contract belum mencatat semua pembayaran atau usulan kuorum. Pastikan worker berjalan dan tunggu job `confirmed`, lalu klik cairkan lagi. Tanpa worker: `PAYOUT_CHAIN_CHECK=off` dan restart backend. |
 | Job chain tidak jalan | Pastikan satu worker aktif dengan kode terbaru, `.env` satu set (Sepolia, contract v2), dan saldo ETH Sepolia operator cukup. Worker tidak memuat ulang otomatis; restart. |
 
 ## Pertanyaan yang mungkin muncul

@@ -44,6 +44,11 @@ const schema = z.object({
 
   DEV_TOOLS: bool("true"),
 
+  // Batas laju autentikasi (per jendela waktu): login gagal per IP + email, registrasi per IP.
+  AUTH_LOGIN_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(10),
+  AUTH_REGISTER_MAX: z.coerce.number().int().min(1).default(30),
+  AUTH_RATE_WINDOW_MINUTES: z.coerce.number().int().min(1).default(15),
+
   // Midtrans Iris (payout sandbox). Dimatikan secara bawaan; pencairan memakai simulasi.
   IRIS_ENABLED: bool("false"),
   IRIS_CREATOR_KEY: z.string().optional(),
@@ -55,6 +60,10 @@ const schema = z.object({
   CHAIN_RPC_URL: optionalText,
   OPERATOR_PRIVATE_KEY: hexValue(64, "private key"),
   LINGKARPAY_ADDRESS: hexValue(40, "alamat contract"),
+
+  // Gerbang pencairan dari contract: auto = aktif bila CHAIN_RPC_URL dan LINGKARPAY_ADDRESS diisi,
+  // on = wajib, off = dimatikan (mis. demo tanpa worker chain).
+  PAYOUT_CHAIN_CHECK: z.enum(["auto", "on", "off"]).default("auto"),
 });
 
 export type Config = z.infer<typeof schema>;

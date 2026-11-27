@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { api, ApiError } from "../api";
-import { PAID_STATUSES, type OrderStatus } from "../types";
+import { PAID_STATUSES, type CheckoutResult, type OrderStatus } from "../types";
 import { Button } from "./ui";
 
 declare global {
@@ -24,13 +24,16 @@ function loadSnap(src: string, clientKey: string): Promise<void> {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 interface Props {
-  circleId: number;
-  periodId: number;
-  memberId: number;
+  circleId?: number;
+  periodId?: number;
+  memberId?: number;
   onPaid?: () => void;
+  /** Checkout lain (mis. pelunasan tunggakan). Bawaan: iuran periode berjalan. */
+  startCheckout?: () => Promise<CheckoutResult>;
+  label?: string;
 }
 
-export default function PayButton({ circleId, periodId, memberId, onPaid }: Props) {
+export default function PayButton({ circleId, periodId, memberId, onPaid, startCheckout, label }: Props) {
   const [state, setState] = useState<"idle" | "loading" | "waiting" | "paid" | "failed" | "error">("idle");
   const [message, setMessage] = useState("");
   const cancelled = useRef(false);
@@ -63,7 +66,9 @@ export default function PayButton({ circleId, periodId, memberId, onPaid }: Prop
       if (cfg?.snapJsUrl && cfg?.midtransClientKey) {
         await loadSnap(cfg.snapJsUrl, cfg.midtransClientKey);
       }
-      const co = await api.checkout({ circleId, periodId, memberId });
+      const co = startCheckout
+        ? await startCheckout()
+        : await api.checkout({ circleId: circleId!, periodId: periodId!, memberId: memberId! });
       if (!co.token) {
         throw new Error("Token pembayaran belum tersedia, coba lagi");
       }
@@ -122,7 +127,7 @@ export default function PayButton({ circleId, periodId, memberId, onPaid }: Prop
           ? "Menunggu pembayaran..."
           : state === "paid"
           ? "Lunas"
-          : "Bayar iuran sekarang"}
+          : label ?? "Bayar iuran sekarang"}
       </Button>
       {message && (
         <p className={`text-xs ${state === "paid" ? "text-brand font-semibold" : state === "error" || state === "failed" ? "text-red-700" : "text-stone-500"}`}>

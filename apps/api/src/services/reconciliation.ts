@@ -9,7 +9,7 @@ import { isPaid, mapGatewayStatus, type OrderStatus } from "./orderStatus.js";
 const LIVE_LIMIT = 50;
 
 /** Flag yang hanya informasi (bukan masalah). */
-const INFO_FLAGS = new Set(["CHAIN_PENDING"]);
+const INFO_FLAGS = new Set(["CHAIN_PENDING", "ARREARS_PAYMENT"]);
 
 interface OrderLine {
   id: number;
@@ -26,6 +26,7 @@ interface OrderLine {
   job_status: string | null;
   job_attempts: number | null;
   tx_hash: string | null;
+  is_arrears: boolean;
 }
 
 /**
@@ -47,7 +48,8 @@ export async function reconcileCircle(user: AuthUser, circleId: number, live: bo
     await pool.query<OrderLine>(
       `SELECT o.id, o.order_id, o.status, o.amount, o.penalty_amount, o.admin_fee, o.gross_amount,
               o.gateway_ref, o.paid_at, p.period_no, m.member_ref,
-              j.status AS job_status, j.attempts AS job_attempts, t.tx_hash
+              j.status AS job_status, j.attempts AS job_attempts, t.tx_hash,
+              EXISTS (SELECT 1 FROM arrears ax WHERE ax.settled_order_id = o.id) AS is_arrears
          FROM orders o
          JOIN periods p ON p.id = o.period_id
          JOIN members m ON m.id = o.member_id
@@ -67,8 +69,9 @@ export async function reconcileCircle(user: AuthUser, circleId: number, live: bo
   for (const o of lines) {
     const flags: string[] = [];
 
-    // Database ↔ chain
-    if (isPaid(o.status) && o.job_status === null) flags.push("PAID_WITHOUT_CHAIN_JOB");
+    // Database ↔ chain. Pelunasan tunggakan memang tidak dicatat ke contract (periodenya sudah ditutup).
+    if (o.is_arrears) flags.push("ARREARS_PAYMENT");
+    else if (isPaid(o.status) && o.job_status === null) flags.push("PAID_WITHOUT_CHAIN_JOB");
     if (o.status === "ANCHORED" && !o.tx_hash) flags.push("ANCHORED_WITHOUT_TX");
     if (o.job_status === "confirmed" && o.status !== "ANCHORED") flags.push("CHAIN_CONFIRMED_ORDER_NOT_ANCHORED");
     if (o.job_status === "failed") flags.push("CHAIN_FAILED");
@@ -124,13 +127,14 @@ export async function reconcileCircle(user: AuthUser, circleId: number, live: bo
   const byStatus: Record<string, number> = {};
   for (const o of lines) byStatus[o.status] = (byStatus[o.status] ?? 0) + 1;
 
+  // Iuran periode (tanpa pelunasan tunggakan; itu dicocokkan terpisah dengan penerusannya).
   const collectedByPeriod = new Map<number, number>();
-  for (const o of paid) {
+  for (const o of paid.filter((x) => !x.is_arrears)) {
     collectedByPeriod.set(o.period_no, (collectedByPeriod.get(o.period_no) ?? 0) + o.amount + o.penalty_amount);
   }
   const payouts = (
-    await pool.query<{ period_no: number; amount: number; status: string; mode: string }>(
-      `SELECT p.period_no, po.amount, po.status, po.mode
+    await pool.query<{ period_no: number; amount: number; status: string; mode: string; arrears_deducted: number }>(
+      `SELECT p.period_no, po.amount, po.status, po.mode, po.arrears_deducted
          FROM payouts po JOIN periods p ON p.id = po.period_id
         WHERE p.circle_id = $1 ORDER BY p.period_no`,
       [circleId],
@@ -146,9 +150,10 @@ export async function reconcileCircle(user: AuthUser, circleId: number, live: bo
         periodNo: no,
         collected,
         payoutAmount: payout ? payout.amount : null,
+        arrearsDeducted: payout ? Number(payout.arrears_deducted) : null,
         payoutStatus: payout ? payout.status : null,
-        // Selisih terkumpul − dicairkan. Harus 0 bila periode sudah dicairkan.
-        difference: payout ? collected - payout.amount : null,
+        // Selisih terkumpul − (dicairkan + potongan tunggakan yang diteruskan). Harus 0 bila sudah dicairkan.
+        difference: payout ? collected - payout.amount - Number(payout.arrears_deducted) : null,
       };
     });
 
@@ -172,6 +177,18 @@ export async function reconcileCircle(user: AuthUser, circleId: number, live: bo
     )
   ).rows[0];
 
+  // Tunggakan: setiap pelunasan (bayar susulan atau potong jatah) harus sudah diteruskan ke kreditor.
+  const arrears = (
+    await pool.query<{ status: string; amount: number; penalty_amount: number; forward_amount: number | null; forward_ref: string | null }>(
+      "SELECT status, amount, penalty_amount, forward_amount, forward_ref FROM arrears WHERE circle_id = $1",
+      [circleId],
+    )
+  ).rows;
+  const settledArrears = arrears.filter((a) => a.status !== "open");
+  const arrearsNotForwarded = settledArrears.filter(
+    (a) => a.forward_ref === null || Number(a.forward_amount) !== Number(a.amount) + Number(a.penalty_amount),
+  ).length;
+
   const issueOrders = orders.filter((o) => o.flags.some((f) => !INFO_FLAGS.has(f))).length;
   const periodIssues = periods.filter((p) => p.difference !== null && p.difference !== 0).length;
   const circleIssue = createJob?.status === "failed" ? 1 : 0;
@@ -188,7 +205,7 @@ export async function reconcileCircle(user: AuthUser, circleId: number, live: bo
       collectedForPayout: paid.reduce((s, o) => s + o.amount + o.penalty_amount, 0),
       payoutTotal: payouts.reduce((s, p) => s + p.amount, 0),
       webhookEventsByOutcome: Object.fromEntries(events.map((e) => [e.outcome ?? "unprocessed", e.n])),
-      issues: issueOrders + periodIssues + circleIssue,
+      issues: issueOrders + periodIssues + circleIssue + arrearsNotForwarded,
       liveChecked,
     },
     chain: {
@@ -196,6 +213,14 @@ export async function reconcileCircle(user: AuthUser, circleId: number, live: bo
       createCircleJob: createJob
         ? { status: createJob.status, attempts: createJob.attempts, lastError: createJob.last_error }
         : null,
+    },
+    arrears: {
+      open: arrears.filter((a) => a.status === "open").length,
+      openAmount: arrears.filter((a) => a.status === "open").reduce((s, a) => s + Number(a.amount), 0),
+      paid: arrears.filter((a) => a.status === "paid").length,
+      deducted: arrears.filter((a) => a.status === "deducted").length,
+      forwardedTotal: settledArrears.reduce((s, a) => s + Number(a.forward_amount ?? 0), 0),
+      notForwarded: arrearsNotForwarded,
     },
     periods,
     orders,

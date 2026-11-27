@@ -35,6 +35,25 @@ function Api([string]$Method, [string]$Path, $Body = $null, [string]$Token = "")
   }
 }
 
+# Pencairan menunggu contract (gerbang PAYOUT_CHAIN_CHECK): diulang selama CHAIN_NOT_READY.
+# Worker chain harus berjalan; tanpa worker, set PAYOUT_CHAIN_CHECK=off di apps\api\.env.
+function Payout-WhenChainReady([string]$Path, $Body, [string]$Token, [int]$Minutes = 8) {
+  $deadline = (Get-Date).AddMinutes($Minutes)
+  $announced = $false
+  while ($true) {
+    try { return Api POST $Path $Body $Token }
+    catch {
+      $m = $_.Exception.Message
+      if (($m -notlike "*CHAIN_NOT_READY*") -or ((Get-Date) -gt $deadline)) { throw }
+      if (-not $announced) {
+        Write-Host "  menunggu contract menyatakan periode siap cair (worker chain harus berjalan)..."
+        $announced = $true
+      }
+      Start-Sleep -Seconds 10
+    }
+  }
+}
+
 # Menjalankan panggilan yang HARUS gagal; mengembalikan pesan errornya.
 function Expect-Error([scriptblock]$Call) {
   try { & $Call | Out-Null; return $null } catch { return $_.Exception.Message }
@@ -71,14 +90,20 @@ $a = Api POST "/auth/register" @{ name = "Kuorum A"; email = "kuo-a-$stamp@examp
 $b = Api POST "/auth/register" @{ name = "Kuorum B"; email = "kuo-b-$stamp@example.com"; password = "password123" }
 $c = Api POST "/auth/register" @{ name = "Kuorum C"; email = "kuo-c-$stamp@example.com"; password = "password123" }
 $outsider = Api POST "/auth/register" @{ name = "Orang Asing"; email = "kuo-x-$stamp@example.com"; password = "password123" }
-$circle = Api POST "/circles" @{ name = "Kuorum $stamp"; contributionAmount = 10000; memberCount = 3; periodDays = 7; penaltyPct = 5; adminFee = 1000 } $a.token
+$circle = Api POST "/circles" @{ name = "Kuorum $stamp"; contributionAmount = 10000; memberCount = 3; periodDays = 7; penaltyPct = 5; startDate = (Get-Date).ToString("yyyy-MM-dd"); payoutAccount = @{ channel = "BCA"; accountNumber = "1234567890"; accountName = "Kuorum A" } } $a.token
 $cid = $circle.id
 $null = Api POST "/circles/$cid/members" @{ email = "kuo-b-$stamp@example.com" } $a.token
 $null = Api POST "/circles/$cid/members" @{ email = "kuo-c-$stamp@example.com" } $a.token
+# Undangan diterima dengan rekening pencairan masing-masing.
+$null = Api POST "/circles/$cid/invitation/accept" @{ payoutAccount = @{ channel = "MANDIRI"; accountNumber = "1300012345678"; accountName = "Kuorum B" } } $b.token
+$null = Api POST "/circles/$cid/invitation/accept" @{ payoutAccount = @{ channel = "DANA"; accountNumber = "081298765432"; accountName = "Kuorum C" } } $c.token
 $null = Api POST "/circles/$cid/start" @{} $a.token
 $d = Api GET "/circles/$cid" $null $a.token
 $pid1 = $d.currentPeriod.id
 Check "kelompok 3 anggota dimulai, periode 1 berjalan" (($d.members.Count -eq 3) -and ((Period-Status $d $pid1) -eq "running")) "periodId=$pid1"
+Check "urutan giliran diundi server (seed dibuka)" (($null -ne $d.circle.drawSeed) -and ($d.circle.drawSeed.Length -eq 64)) ("seed=" + $d.circle.drawSeed.Substring(0, 10) + "...")
+$recipient = $d.members | Where-Object { $_.memberId -eq $d.currentPeriod.recipientMemberId }
+Write-Host ("  Penerima periode 1 (hasil undian): " + $recipient.name)
 
 # ---------------- Anggota A membayar ----------------
 Step "2. Anggota A membayar (B dan C tidak)"
@@ -95,6 +120,10 @@ Check "pembayaran A terdeteksi" (($null -ne $paid) -and ($PaidStatuses -contains
 
 # ---------------- Usulan dan suara ----------------
 Step "3. Usulan tutup periode"
+$err = Expect-Error { Api POST "/periods/$pid1/close-proposals" $null $a.token }
+Check "usulan sebelum jatuh tempo ditolak" (($null -ne $err) -and ($err -like "*NOT_DUE_YET*")) ""
+# Simulasi waktu sandbox (butuh DEV_TOOLS=true): periode dianggap sudah lewat jatuh tempo.
+$null = Api POST "/dev/periods/$pid1/make-overdue" $null $a.token
 $pr = Api POST "/periods/$pid1/close-proposals" $null $a.token
 Check "usulan dibuat: open, kuorum 2" (($pr.status -eq "open") -and ($pr.quorum -eq 2)) "id=$($pr.id)"
 $err = Expect-Error { Api POST "/periods/$pid1/close-proposals" $null $b.token }
@@ -119,7 +148,13 @@ Check "anggota C tidak bisa membayar lagi (periode ditutup)" (($null -ne $err) -
 
 # ---------------- Pencairan ----------------
 Step "5. Pencairan memakai dana yang terkumpul"
-$p = Api POST "/payouts/simulate" @{ periodId = $pid1 } $a.token
+# Yang boleh mencairkan: pembuat atau penerima giliran. Anggota lain ditolak.
+$tokens = @{ "Kuorum A" = $a.token; "Kuorum B" = $b.token; "Kuorum C" = $c.token }
+$other = $d.members | Where-Object { ($_.name -ne "Kuorum A") -and ($_.memberId -ne $recipient.memberId) } | Select-Object -First 1
+$err = Expect-Error { Api POST "/payouts/simulate" @{ periodId = $pid1 } $tokens[$other.name] }
+Check "anggota bukan pembuat/penerima tidak bisa mencairkan" (($null -ne $err) -and ($err -like "*FORBIDDEN*")) ("dicoba oleh " + $other.name)
+$p = Payout-WhenChainReady "/payouts/simulate" @{ periodId = $pid1 } $tokens[$recipient.name]
+Check "tujuan transfer simulasi tercatat" (($null -ne $p.destination) -and ($p.destination.accountName -eq $recipient.name) -and ($p.transferRef -like "SIM-TRF-*")) ("ke " + $p.destination.channelLabel + " ****" + $p.destination.last4 + " ref=" + $p.transferRef)
 Check "dana pencairan = iuran A tanpa biaya admin" ($p.amount -eq 10000) "amount=$($p.amount)"
 $d = Api GET "/circles/$cid" $null $a.token
 Check "periode 1 selesai" ((Period-Status $d $pid1) -eq "done") ""

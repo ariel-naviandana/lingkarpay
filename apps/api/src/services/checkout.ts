@@ -152,6 +152,38 @@ export async function createCheckout(
     );
   }
 
+  return issueOrder(ctx);
+}
+
+/**
+ * Pelunasan tunggakan (iuran periode yang sudah ditutup lewat kuorum). Hanya penunggaknya sendiri.
+ * Tagihannya iuran + penalti keterlambatan + biaya admin; setelah lunas, iuran dan penalti
+ * diteruskan ke penerima periode itu.
+ */
+export async function createArrearsCheckout(user: AuthUser, arrearId: number): Promise<CheckoutResult> {
+  const { rows } = await pool.query<CheckoutContext & { arrear_status: string }>(
+    `SELECT m.id AS member_id, m.user_id, u.name AS user_name, u.email AS user_email,
+            c.id AS circle_id, c.status AS circle_status,
+            c.contribution_amount, c.penalty_pct, c.admin_fee,
+            p.id AS period_id, p.period_no, p.status AS period_status, p.due_date,
+            a.status AS arrear_status
+       FROM arrears a
+       JOIN members m ON m.id = a.debtor_member_id
+       JOIN users u   ON u.id = m.user_id
+       JOIN circles c ON c.id = a.circle_id
+       JOIN periods p ON p.id = a.period_id
+      WHERE a.id = $1`,
+    [arrearId],
+  );
+  const ctx = rows[0];
+  if (!ctx) throw notFound("Tunggakan");
+  if (ctx.user_id !== user.id) throw forbidden("Tunggakan hanya bisa dilunasi oleh penunggaknya sendiri");
+  if (ctx.arrear_status !== "open") throw conflict("ARREAR_SETTLED", "Tunggakan ini sudah lunas");
+  return issueOrder(ctx);
+}
+
+/** Membuat (atau memakai ulang) order untuk anggota dan periode pada ctx, lalu token Snap. */
+async function issueOrder(ctx: CheckoutContext): Promise<CheckoutResult> {
   const existing = await resolveExisting(ctx.member_id, ctx.period_id);
   if (existing) {
     if (isPaid(existing.status)) {

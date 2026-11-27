@@ -3,6 +3,7 @@ import { AppError, conflict, forbidden, notFound } from "../lib/errors.js";
 import { isRejected, quorumOf } from "../lib/quorum.js";
 import type { AuthUser } from "./auth.js";
 import { enqueueCastVote, enqueueExecuteProposal, enqueueProposeClosePeriod } from "./outbox.js";
+import { createArrearsForClosedPeriod } from "./arrears.js";
 
 /**
  * Kuorum (keputusan operasional): usulan menutup periode yang iurannya belum lengkap.
@@ -17,7 +18,7 @@ const PAID = "('SETTLED', 'SETTLED_PENDING_CHAIN', 'ANCHORED')";
 /** Anggota kelompok (satu-satunya yang boleh membuat usulan, memberi suara, dan melihat). */
 async function requireMember(db: Db, circleId: number, userId: number): Promise<{ id: number; member_ref: string }> {
   const { rows } = await db.query<{ id: number; member_ref: string }>(
-    "SELECT id, member_ref FROM members WHERE circle_id = $1 AND user_id = $2",
+    "SELECT id, member_ref FROM members WHERE circle_id = $1 AND user_id = $2 AND status = 'active'",
     [circleId, userId],
   );
   if (!rows[0]) throw forbidden("Hanya anggota kelompok yang boleh mengakses usulan");
@@ -33,8 +34,11 @@ export async function createClosePeriodProposal(user: AuthUser, periodId: number
       circle_id: number;
       circle_status: string;
       member_count: number;
+      due_date: Date;
+      overdue: boolean;
     }>(
-      `SELECT p.period_no, p.status AS period_status, c.id AS circle_id, c.status AS circle_status, c.member_count
+      `SELECT p.period_no, p.status AS period_status, c.id AS circle_id, c.status AS circle_status, c.member_count,
+              p.due_date, (now() > p.due_date) AS overdue
          FROM periods p JOIN circles c ON c.id = p.circle_id
         WHERE p.id = $1
         FOR UPDATE OF p`,
@@ -56,6 +60,21 @@ export async function createClosePeriodProposal(user: AuthUser, periodId: number
     }
     if (paid.rows[0]!.n >= ctx.member_count) {
       throw conflict("PERIOD_COMPLETE", "Semua iuran sudah lunas; usulan tidak diperlukan");
+    }
+    // Periode tidak boleh ditutup sebelum jatuh tempo: anggota yang belum bayar masih berhak membayar
+    // tepat waktu dan tidak boleh tiba-tiba dijadikan penunggak.
+    if (!ctx.overdue) {
+      throw conflict(
+        "NOT_DUE_YET",
+        `Usulan tutup periode baru bisa dibuat setelah jatuh tempo (${ctx.due_date.toLocaleString("id-ID", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: "Asia/Jakarta",
+        })} WIB).`,
+      );
     }
 
     // Usulan lama yang melewati batas waktu ditandai kedaluwarsa agar tidak menghalangi usulan baru.
@@ -133,6 +152,8 @@ export async function castVote(user: AuthUser, proposalId: number, approve: bool
       if (closed.rowCount) {
         await client.query("UPDATE proposals SET status = 'executed', updated_at = now() WHERE id = $1", [proposalId]);
         await enqueueExecuteProposal(client, proposalId);
+        // Anggota yang belum membayar periode ini menjadi penunggak kepada penerimanya.
+        await createArrearsForClosedPeriod(client, pr.period_id);
       } else {
         // Periode sudah tidak berjalan (mis. semua iuran akhirnya lunas): keputusan tidak diperlukan.
         await client.query("UPDATE proposals SET status = 'expired', updated_at = now() WHERE id = $1", [proposalId]);

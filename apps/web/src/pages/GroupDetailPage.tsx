@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import { PayoutPanel, QuorumCard } from "../components/CircleActions";
+import { PayoutAccountCard } from "../components/PayoutAccountCard";
+import { ArrearsCard } from "../components/ArrearsCard";
 import { PayoutDetail } from "../components/PayoutDetail";
 import DraftActions from "../components/DraftActions";
 import PayButton from "../components/PayButton";
@@ -20,6 +22,7 @@ import {
   circleStatus,
   dateTime,
   daysLate,
+  formatYmd,
   periodStatus,
   rupiah,
   shortDate,
@@ -43,6 +46,7 @@ async function load(id: number) {
 }
 
 function statusBadge(m: MemberView) {
+  if (m.status === "invited") return <Badge tone="amber">Menunggu konfirmasi</Badge>;
   const p = m.currentPayment;
   if (!p) return <span className="text-stone-400">–</span>;
   if (p.status === "ANCHORED") return <Badge tone="green">Lunas</Badge>;
@@ -149,7 +153,7 @@ export default function GroupDetailPage() {
             {cp
               ? `Periode ${cp.periodNo} dari ${periods.length}`
               : circle.status === "draft"
-                ? "Belum dimulai"
+                ? `Belum dimulai · tanggal mulai ${formatYmd(circle.startDate)}`
                 : "Semua periode selesai"}{" "}
             · {isCreator ? "Anda pengelola" : "Anda anggota"}
           </p>
@@ -188,13 +192,13 @@ export default function GroupDetailPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card className="p-4 sm:p-5">
           <p className="text-xs sm:text-sm text-stone-500">
-            Total dana periode {cp?.periodNo ?? "–"}
+            Target dana periode {cp?.periodNo ?? "–"}
           </p>
           <p className="my-1 text-2xl sm:text-3xl font-extrabold tracking-tight">
-            {rupiah(members.length * circle.contributionAmount)}
+            {rupiah(circle.memberCount * circle.contributionAmount)}
           </p>
           <p className="text-xs sm:text-sm text-stone-500">
-            {members.length} anggota × {rupiah(circle.contributionAmount)}
+            {circle.memberCount} anggota × {rupiah(circle.contributionAmount)}, bila semua membayar
           </p>
         </Card>
         <Card className="p-4 sm:p-5">
@@ -215,13 +219,13 @@ export default function GroupDetailPage() {
             Progres iuran periode {cp?.periodNo ?? "–"}
           </p>
           <p className="my-1 text-2xl sm:text-3xl font-extrabold tracking-tight">
-            {paidCount} dari {members.length}
+            {paidCount} dari {circle.memberCount}
           </p>
           <div className="mt-2 h-2 rounded-full bg-sand">
             <div
               className="h-2 rounded-full bg-brand"
               style={{
-                width: `${members.length ? (paidCount / members.length) * 100 : 0}%`,
+                width: `${circle.memberCount ? (paidCount / circle.memberCount) * 100 : 0}%`,
               }}
             />
           </div>
@@ -297,7 +301,14 @@ export default function GroupDetailPage() {
                         <Td>
                           <Mono>{m.memberRef}</Mono>
                         </Td>
-                        <Td>{statusBadge(m)}</Td>
+                        <Td>
+                          <div className="flex flex-wrap gap-1">
+                            {statusBadge(m)}
+                            {(detail.arrears ?? []).some((a) => a.debtorMemberId === m.memberId && a.status === "open") && (
+                              <Badge tone="red">Menunggak</Badge>
+                            )}
+                          </div>
+                        </Td>
                         <Td>
                           {penalty > 0 ? (
                             <span className="font-semibold text-red-700">
@@ -342,7 +353,15 @@ export default function GroupDetailPage() {
               [
                 ["Iuran per periode", rupiah(circle.contributionAmount)],
                 ["Periode", `${circle.periodDays} hari`],
-                ["Penalti keterlambatan", `${circle.penaltyPct}% per hari`],
+                ["Tanggal mulai", formatYmd(circle.startDate)],
+                [
+                  "Urutan giliran",
+                  circle.status === "draft" ? "Diundi acak saat dikunci" : "Hasil undian acak sistem",
+                ],
+                ...(circle.drawSeed
+                  ? ([["Seed undian", `${circle.drawSeed.slice(0, 10)}…${circle.drawSeed.slice(-4)}`]] as const)
+                  : []),
+                ["Penalti keterlambatan", circle.penaltyPct > 0 ? `${circle.penaltyPct}% dari iuran, sekali bila terlambat` : "Tidak ada"],
                 ["Biaya admin", `${rupiah(circle.adminFee)} per pembayaran`],
                 [
                   "Kuorum keputusan",
@@ -363,7 +382,7 @@ export default function GroupDetailPage() {
                 className="flex justify-between gap-3 border-t border-sand pt-2.5 text-xs sm:text-sm"
               >
                 <span className="text-stone-500">{k}</span>
-                {k === "Alamat contract" ? (
+                {k === "Alamat contract" || k === "Seed undian" ? (
                   <Mono>{v}</Mono>
                 ) : (
                   <b className="text-right">{v}</b>
@@ -373,7 +392,10 @@ export default function GroupDetailPage() {
             <p className="text-xs text-stone-500">
               {circle.status === "draft"
                 ? "Aturan terkunci setelah kelompok dimulai."
-                : "Aturan sudah terkunci sejak kelompok dimulai."}
+                : "Aturan sudah terkunci sejak kelompok dimulai."}{" "}
+              Iuran, penalti, biaya admin, dan urutan giliran dicatat di contract; tanggal mulai dan seed undian disimpan
+              server. Urutan = anggota diurutkan menurut SHA-256(seed:ID anggota), jadi siapa pun bisa menghitung ulang.
+              Bila periode dibuka terlambat, tenggatnya di aplikasi digeser agar anggota tetap mendapat {circle.periodDays} hari.
             </p>
           </Card>
         </div>
@@ -419,6 +441,8 @@ export default function GroupDetailPage() {
             </div>
           </Card>
 
+          <ArrearsCard arrears={detail.arrears ?? []} me={me} onChanged={reload} />
+          {me && <PayoutAccountCard key={me.payoutAccount?.updatedAt ?? "none"} circleId={circle.id} me={me} onChanged={reload} />}
           <PayoutPanel detail={detail} payments={history.payments} onChanged={reload} />
           {history.payouts.length > 0 && (
             <Card className="space-y-3">
@@ -438,4 +462,4 @@ export default function GroupDetailPage() {
       </div>
     </div>
   );
-}
+}

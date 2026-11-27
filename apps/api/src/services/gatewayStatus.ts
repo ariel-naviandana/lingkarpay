@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { withTx } from "../db/pool.js";
 import { parseRupiah } from "../lib/money.js";
 import { getTransactionStatus } from "./midtrans.js";
+import { settleArrearByOrder } from "./arrears.js";
 import { enqueueRecordPayment } from "./outbox.js";
 import { mapGatewayStatus, transitionOrder } from "./orderStatus.js";
 import { refreshPeriodReadiness } from "./periods.js";
@@ -55,6 +56,9 @@ export async function applyGatewayStatus(
   if (result.outcome === "unchanged") return "unchanged";
 
   if (target === "SETTLED") {
+    // Pelunasan tunggakan periode yang sudah ditutup: diteruskan ke kreditor, tidak dicatat ke contract
+    // (contract v2 hanya menerima pembayaran saat periode berjalan) dan tidak mengubah status periode.
+    if (await settleArrearByOrder(client, order.id)) return "applied";
     // Satu pembayaran sah, satu job on-chain (outbox). Kegagalan chain tidak membatalkan pembayaran.
     await enqueueRecordPayment(client, order.id);
     await refreshPeriodReadiness(client, order.period_id);

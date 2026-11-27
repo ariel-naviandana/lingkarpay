@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge, Button, Card } from "../components/ui";
+import { InvitationsCard } from "../components/InvitationsCard";
 import { useAuth } from "../context/useAuth";
 import { api } from "../api";
 import { formatDateTime, rupiah } from "../lib/format";
@@ -207,6 +208,8 @@ export default function DashboardPage() {
           </Button>
         </div>
       )}
+
+      <InvitationsCard onChanged={() => void loadData()} />
 
       {/* Unpaid Warning Banner */}
       {unpaidAlerts.length > 0 && (

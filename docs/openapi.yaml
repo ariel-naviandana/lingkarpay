@@ -45,6 +45,8 @@ paths:
                   environment: { type: string, example: sandbox }
                   midtransClientKey: { type: string }
                   snapJsUrl: { type: string, example: "https://app.sandbox.midtrans.com/snap/snap.js" }
+                  adminFee: { type: integer, description: "Biaya admin per pembayaran, ditetapkan aplikasi" }
+                  devTools: { type: boolean, description: "true bila rute simulasi sandbox (/dev/...) aktif" }
 
   /auth/register:
     post:
@@ -64,6 +66,7 @@ paths:
       responses:
         "201": { description: Terdaftar, content: { application/json: { schema: { $ref: "#/components/schemas/AuthResult" } } } }
         "409": { $ref: "#/components/responses/Error" }
+        "429": { description: "RATE_LIMITED: terlalu banyak registrasi dari satu IP (header Retry-After)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /auth/login:
     post:
@@ -82,6 +85,7 @@ paths:
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/AuthResult" } } } }
         "401": { $ref: "#/components/responses/Error" }
+        "429": { description: "RATE_LIMITED: terlalu banyak login gagal untuk IP + email ini (header Retry-After)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /auth/me:
     get:
@@ -121,14 +125,16 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name, contributionAmount, memberCount, periodDays]
+              required: [name, contributionAmount, memberCount, periodDays, startDate, payoutAccount]
+              description: Biaya admin tidak diterima dari klien; selalu DEFAULT_ADMIN_FEE.
               properties:
                 name: { type: string, maxLength: 100 }
                 contributionAmount: { type: integer, minimum: 1000, example: 100000 }
                 memberCount: { type: integer, minimum: 2, maximum: 50 }
                 periodDays: { type: integer, minimum: 1, maximum: 365 }
-                penaltyPct: { type: integer, minimum: 0, maximum: 100, default: 0 }
-                adminFee: { type: integer, minimum: 0, description: "Bawaan DEFAULT_ADMIN_FEE" }
+                penaltyPct: { type: integer, minimum: 0, maximum: 100, default: 0, description: "persen iuran, sekali bila terlambat" }
+                startDate: { type: string, format: date, example: "2026-12-01", description: "Tanggal mulai (WIB), tidak boleh sebelum hari ini; tanpa batas maksimum" }
+                payoutAccount: { type: object, required: [channel, accountNumber, accountName], properties: { channel: { type: string, enum: [BCA, BNI, BRI, MANDIRI, BSI, CIMB, PERMATA, GOPAY, OVO, DANA, SHOPEEPAY] }, accountNumber: { type: string }, accountName: { type: string } } }
       responses:
         "201":
           description: Dibuat
@@ -139,8 +145,9 @@ paths:
                   - $ref: "#/components/schemas/Circle"
                   - type: object
                     properties: { myMemberId: { type: integer } }
-        "400": { $ref: "#/components/responses/Error" }
+        "400": { description: "VALIDATION_ERROR atau INVALID_START_DATE", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "401": { $ref: "#/components/responses/Error" }
+        "409": { description: "HAS_OPEN_ARREARS: pembuat masih punya tunggakan yang belum lunas", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     get:
       tags: [Kelompok]
       summary: Kelompok milikku
@@ -211,19 +218,9 @@ paths:
   /circles/{id}/start:
     post:
       tags: [Kelompok]
-      summary: Mulai kelompok. Mengunci urutan giliran dan parameter, membuat semua periode, mengantre job createCircle ke chain.
+      summary: Mulai kelompok (pembuat, pada/sesudah startDate). Urutan giliran diundi server dengan seed acak yang dibuka di circle.drawSeed (urut menurut SHA-256(seed:memberRef)); urutan dari klien tidak diterima. Membuat semua periode dan mengantre job createCircle ke chain.
       security: [{ bearerAuth: [] }]
       parameters: [{ $ref: "#/components/parameters/CircleId" }]
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                order:
-                  type: array
-                  description: Urutan giliran (daftar memberId). Bawaan urutan bergabung.
-                  items: { type: integer }
       responses:
         "200":
           description: Dimulai
@@ -235,7 +232,7 @@ paths:
                   circle: { $ref: "#/components/schemas/Circle" }
                   periods: { type: array, items: { $ref: "#/components/schemas/Period" } }
         "400": { $ref: "#/components/responses/Error" }
-        "409": { description: "CIRCLE_NOT_FULL atau CIRCLE_STARTED", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: "CIRCLE_NOT_FULL, CIRCLE_STARTED, INVITES_PENDING, atau START_DATE_NOT_REACHED", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /circles/{id}/periods:
     get:
@@ -268,6 +265,95 @@ paths:
                 properties:
                   payments: { type: array, items: { $ref: "#/components/schemas/Payment" } }
                   payouts: { type: array, items: { $ref: "#/components/schemas/PayoutItem" } }
+
+  /invitations:
+    get:
+      tags: [Kelompok]
+      summary: Undangan saya yang menunggu jawaban
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: "{ invitations: [{ circle, memberId, creatorName, invitedAt }] }" }
+
+  /circles/{id}/invitation/accept:
+    post:
+      tags: [Kelompok]
+      summary: Terima undangan (rekening pencairan wajib)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/CircleId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [payoutAccount], properties: { payoutAccount: { type: object, required: [channel, accountNumber, accountName], properties: { channel: { type: string, enum: [BCA, BNI, BRI, MANDIRI, BSI, CIMB, PERMATA, GOPAY, OVO, DANA, SHOPEEPAY] }, accountNumber: { type: string }, accountName: { type: string } } } } }
+      responses:
+        "200": { description: "{ circleId, memberId, status: active }" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /circles/{id}/invitation/decline:
+    post:
+      tags: [Kelompok]
+      summary: Tolak undangan (kursi kosong lagi)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/CircleId" }]
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /circles/{id}/invitations/{memberId}:
+    delete:
+      tags: [Kelompok]
+      summary: Pembuat membatalkan undangan yang belum dijawab
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/CircleId" }
+        - { name: memberId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: OK }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /arrears/{id}/checkout:
+    post:
+      tags: [Pembayaran]
+      summary: Pelunasan tunggakan oleh penunggaknya (iuran + penalti + biaya admin)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "200": { description: Order PENDING dipakai ulang }
+        "201": { description: Order baru dan token Snap }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { description: ARREAR_SETTLED, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /circles/{id}/payout-account:
+    put:
+      tags: [Kelompok]
+      summary: Isi atau ganti rekening pencairan sendiri (data dummy)
+      description: Server hanya menyimpan 4 digit terakhir dan hash Keccak-256 "kanal:nomor"; nomor lengkap tidak disimpan.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/CircleId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, accountNumber, accountName]
+              properties:
+                channel: { type: string, enum: [BCA, BNI, BRI, MANDIRI, BSI, CIMB, PERMATA, GOPAY, OVO, DANA, SHOPEEPAY] }
+                accountNumber: { type: string, description: "bank 6-20 digit; e-wallet nomor ponsel 08..." }
+                accountName: { type: string, maxLength: 100 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payoutAccount: { $ref: "#/components/schemas/PayoutAccount" }
+        "400": { description: "INVALID_ACCOUNT_NUMBER atau validasi", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { $ref: "#/components/responses/Error" }
 
   /checkout:
     post:
@@ -387,7 +473,7 @@ paths:
   /payouts/simulate:
     post:
       tags: [Pencairan]
-      summary: Simulasi pencairan periode (pembuat kelompok, periode harus ready_payout)
+      summary: Simulasi pencairan periode (pembuat kelompok atau penerima giliran; periode harus ready_payout)
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -397,7 +483,8 @@ paths:
       responses:
         "201": { description: Dibuat, content: { application/json: { schema: { $ref: "#/components/schemas/Payout" } } } }
         "403": { $ref: "#/components/responses/Error" }
-        "409": { description: "PERIOD_NOT_READY atau PAYOUT_EXISTS", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: "PERIOD_NOT_READY, PAYOUT_EXISTS, PAYOUT_ACCOUNT_REQUIRED, atau gerbang contract: CHAIN_NOT_READY, CHAIN_ALREADY_PAID_OUT, CHAIN_RECIPIENT_MISMATCH", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: "CHAIN_UNAVAILABLE: contract tidak dapat dibaca (PAYOUT_CHAIN_CHECK=on atau RPC gagal)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /payouts/iris:
     post:
@@ -448,7 +535,7 @@ paths:
       responses:
         "201": { description: Usulan dibuat, content: { application/json: { schema: { $ref: "#/components/schemas/Proposal" } } } }
         "403": { $ref: "#/components/responses/Error" }
-        "409": { description: "PERIOD_NOT_OPEN, NO_FUNDS, PERIOD_COMPLETE, atau PROPOSAL_EXISTS", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: "PERIOD_NOT_OPEN, NOT_DUE_YET (belum lewat jatuh tempo), NO_FUNDS, PERIOD_COMPLETE, atau PROPOSAL_EXISTS", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /circles/{id}/proposals:
     get:
@@ -558,6 +645,8 @@ components:
         status: { type: string, enum: [draft, active, completed] }
         chainCircleId: { type: string, nullable: true, description: "null sampai kelompok dicatat di chain" }
         createdBy: { type: integer }
+        startDate: { type: string, format: date, description: "Tanggal mulai rencana (WIB)" }
+        drawSeed: { type: string, nullable: true, description: "Seed undian urutan giliran; terisi setelah dimulai" }
         startedAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
 
@@ -664,7 +753,20 @@ components:
         status: { type: string, enum: [SIMULATED, QUEUED, APPROVED, COMPLETED, FAILED] }
         recipientMemberRef: { type: string }
         payoutRefHash: { type: string }
+        destination: { allOf: [{ $ref: "#/components/schemas/PayoutAccount" }], nullable: true }
+        transferRef: { type: string, nullable: true }
+        transferredAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
+
+    PayoutAccount:
+      type: object
+      description: Rekening pencairan tersamar (tanpa nomor lengkap)
+      properties:
+        channel: { type: string }
+        channelLabel: { type: string }
+        kind: { type: string, enum: [bank, ewallet] }
+        last4: { type: string }
+        accountName: { type: string }
 
     Payout:
       type: object
@@ -675,6 +777,9 @@ components:
         amount: { type: integer, description: "iuran + penalti terkumpul, tanpa biaya admin" }
         irisReferenceNo: { type: string, nullable: true }
         payoutRefHash: { type: string }
+        destination: { allOf: [{ $ref: "#/components/schemas/PayoutAccount" }], nullable: true }
+        transferRef: { type: string, nullable: true, description: "SIM-TRF-... (simulasi) atau nomor Iris" }
+        transferredAt: { type: string, format: date-time, nullable: true }
 
     WebhookResult:
       type: object
