@@ -524,13 +524,6 @@ export async function startCircle(userId: number, circleId: number) {
         `${pending.rows[0]!.n} undangan belum dijawab. Kelompok bisa dimulai setelah semua menerima.`,
       );
     }
-    const missing = await membersWithoutDeposit(client, circleId);
-    if (missing.length > 0) {
-      throw conflict(
-        "DEPOSITS_PENDING",
-        `Dana jaminan belum disetor oleh: ${missing.join(", ")}. Kelompok bisa dikunci setelah semua anggota menyetor jaminan.`,
-      );
-    }
     const memberRows = (
       await client.query<{ id: number; member_ref: string }>(
         "SELECT id, member_ref FROM members WHERE circle_id = $1 AND status = 'active' ORDER BY id",
@@ -542,6 +535,14 @@ export async function startCircle(userId: number, circleId: number) {
       throw conflict(
         "CIRCLE_NOT_FULL",
         `Anggota belum lengkap (${members.length}/${circle.member_count})`,
+      );
+    }
+    // Jaminan dicek setelah anggota lengkap: urutan pesan mengikuti urutan langkah pembuat.
+    const missing = await membersWithoutDeposit(client, circleId);
+    if (missing.length > 0) {
+      throw conflict(
+        "DEPOSITS_PENDING",
+        `Dana jaminan belum disetor oleh: ${missing.join(", ")}. Kelompok bisa dikunci setelah semua anggota menyetor jaminan.`,
       );
     }
 
