@@ -12,7 +12,7 @@ Seluruh tugas jalur payment gateway selesai dan terverifikasi, begitu juga sambu
 | 1 | Aturan, rancangan, rencana | Selesai | `RULES.md`, `DESIGN.md`, `PLAN.md` |
 | 2 | Spike webhook | Selesai | Webhook masuk lewat tunnel; signature valid; status pengiriman Completed |
 | 3 | Struktur proyek | Selesai | `config` tervalidasi, `routes/services/db/lib`, `tsconfig` |
-| 4 | Database | Selesai | Migrasi 001, 002, dan 003 |
+| 4 | Database | Selesai | Migrasi 001 sampai 008 (15 tabel) |
 | 5 | Mesin status pesanan | Selesai | Tes unit semua transisi |
 | 6 | API kelompok, anggota, periode, auth | Selesai | Smoke test |
 | 7 | Tagihan (iuran + penalti + biaya admin) | Selesai | Tes unit, tes integrasi, smoke test |
@@ -26,7 +26,11 @@ Seluruh tugas jalur payment gateway selesai dan terverifikasi, begitu juga sambu
 | + | Cancel dan expire lewat API | Selesai | Terbukti di sandbox (butuh izin Capability pada server key) |
 | + | Smart contract LingkarPay | Selesai | 40 tes; ter-deploy di Sepolia (v2) |
 | + | Worker chain idempoten | Selesai | Melanjutkan dari state contract; terbukti di Sepolia |
-| + | Kuorum (usulan tutup periode) di backend | Selesai | 8 tes integrasi + `smoke-quorum.ps1` (15 pemeriksaan) + terbukti di Sepolia |
+| + | Kuorum (usulan tutup periode) di backend | Selesai | Tes integrasi + `smoke-quorum.ps1` (19 pemeriksaan) + terbukti di Sepolia |
+| + | Peran admin platform dan rincian pencairan | Selesai | Tes admin; commit `a648cbb` |
+| + | Keamanan: batas laju, header, gerbang contract sebelum pencairan | Selesai | Tes keamanan dan `chainGuard`; `KEAMANAN.md` |
+| + | Aturan bisnis: undangan, rekening wajib, tunggakan, tanggal mulai, undian giliran, kuorum setelah jatuh tempo, pencairan oleh penerima, sanksi penunggak | Selesai | Tes integrasi; commit `81964ab`; `ATURAN_BISNIS.md` |
+| + | Dana jaminan, batal kelompok draft, cek undian di portal | Selesai | Tes integrasi jaminan; commit `b97a10f` |
 
 ## Verifikasi
 Perintah dijalankan dari `apps\api` (Windows PowerShell). Tes backend membutuhkan Postgres (`docker compose up -d`).
